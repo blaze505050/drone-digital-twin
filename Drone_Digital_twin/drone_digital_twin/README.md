@@ -5,7 +5,6 @@
   <img src="https://img.shields.io/badge/Tests-930%2B%20passing-brightgreen" />
   <img src="https://img.shields.io/badge/Modules-21-orange" />
   <img src="https://img.shields.io/badge/License-MIT-lightgrey" />
-  <img src="https://img.shields.io/badge/Status-Research%20Grade-purple" />
 </p>
 
 A **production-quality, open-source UAV Digital Twin ecosystem** implementing
