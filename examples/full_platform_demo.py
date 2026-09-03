@@ -295,12 +295,17 @@ D       = swarm.inter_drone_distances()
 print(f"   Swarm: {swarm.n_active} drones, centroid={swarm.get_swarm_centroid().round(2)}")
 print(f"   DefenseSim: GPS far={gps_ok} near_jammer={not gps_no} threat={threat:.2f}")
 
-# ── Module 22: BEMT Propeller Aerodynamics ────────────────────────────────────
-print("\n[22/28] Blade Element Momentum Theory (BEMT) Propeller Engine...")
-from drone_sdk.cad_engine import BladeElementMomentumSolver, PropellerGeometry
-bemt = BladeElementMomentumSolver()
+# ── Module 22: Blade Element Momentum Theory (BEMT) Propeller Engine ──────────
+print("\n[22/28] Blade Element Momentum Theory (BEMT) Propeller Engine & UIUC Validation...")
+from drone_sdk.cad_engine import BladeElementMomentumSolver, PropellerGeometry, DroneGeometryBuilder
+from drone_sdk.validation_framework import UIUCPropellerDatasetLoader
+cad_prop = DroneGeometryBuilder.to_propeller_geometry(diameter_inch=10.0, pitch_inch=4.7)
+bemt = BladeElementMomentumSolver(cad_prop)
 bemt_res = bemt.solve(rpm=5200.0)
 print(f"   BEMT: 5200 RPM -> Thrust={bemt_res.thrust_n:.2f} N, Torque={bemt_res.torque_nm*1000:.1f} mN·m, Power={bemt_res.power_w:.1f} W, FM={bemt_res.figure_of_merit:.2f}")
+uiuc_loader = UIUCPropellerDatasetLoader()
+uiuc_rep = uiuc_loader.evaluate_bemt_solver(bemt, rpm=4000.0)
+print(f"   UIUC Benchmark: {uiuc_rep.propeller_model} ({uiuc_rep.num_test_points} wind tunnel pts) -> CT RMSE={uiuc_rep.ct_rmse:.4f}, CP RMSE={uiuc_rep.cp_rmse:.4f}")
 
 # ── Module 23: NASA Battery Aging Calibration ─────────────────────────────────
 print("\n[23/28] NASA Battery Aging Adapter & Degradation Calibration...")
@@ -314,13 +319,17 @@ print(f"   NASA: Cell B0005 (168 cycles) calibrated{nasa_note} -> alpha={cal_a:.
 
 # ── Module 24: Flight Dataset Benchmark Validation (EuRoC MAV) ───────────────
 print("\n[24/28] Flight Dynamics Benchmark Validation (EuRoC MAV Dataset)...")
-from drone_sdk.validation_framework import EuRoCDatasetLoader
+from drone_sdk.validation_framework import EuRoCDatasetLoader, RealFlightLogValidator
 euroc = EuRoCDatasetLoader("V1_01_easy")
 traj = euroc.trajectory
 sim_test_pos = traj.pos_ned + np.random.normal(0, 0.04, traj.pos_ned.shape)
 bench_eval = euroc.evaluate_state_estimator(sim_test_pos)
 euroc_note = " [synthetic fallback — no real dataset file found]" if getattr(euroc, "is_synthetic_fallback", False) else ""
 print(f"   Benchmark: EuRoC V1_01_easy ({traj.duration_s:.1f}s, {traj.total_distance_m:.1f}m){euroc_note} -> ATE RMSE={bench_eval['pos_rmse_m']*100:.1f} cm, R²={bench_eval['r2']:.4f}")
+f_val = RealFlightLogValidator("demo_validator")
+f_rep = f_val.evaluate_flight()
+f_note = " [real flight file]" if f_rep.is_real_vehicle_log else " [synthetic firefly benchmark]"
+print(f"   Flight Log Replay:{f_note} ATE RMSE={f_rep.pos_ate_rmse_m*100:.1f} cm, Vel RMSE={f_rep.vel_rmse_m_s*100:.1f} cm/s, Twin Health={f_rep.mean_twin_health*100:.1f}%")
 
 # ── Module 25: Closed-Loop Digital Twin Core ──────────────────────────────────
 print("\n[25/28] Closed-Loop Digital Twin Core (MEKF + Parallel 6-DOF + Residual Monitor + Recalibration)...")

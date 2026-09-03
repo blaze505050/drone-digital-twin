@@ -565,11 +565,16 @@ meshQualityControls
         path.write_text(content)
         return path
 
-    def write_turbulence_properties(self, case_dir: Path) -> Path:
-        """Write constant/turbulenceProperties for k-omega SST."""
+    def write_turbulence_properties(self, case_dir: Path, model: str = "kOmegaSST") -> Path:
+        """Write constant/turbulenceProperties for RANS simulation.
+
+        Default model is kOmegaSST (Menter Shear Stress Transport), which is
+        the aerospace industry standard for low-to-transitional Reynolds number (Re ~ 10^4 - 10^5)
+        separated flow around UAV airframes and propellers. Other options: kEpsilon, SpalartAllmaras.
+        """
         content = self.foam_header(
             "dictionary", "constant", "turbulenceProperties"
-        ) + "\nsimulationType RAS;\nRAS { RASModel kOmegaSST; turbulence on; printCoeffs on; }\n"
+        ) + f"\nsimulationType RAS;\nRAS {{ RASModel {model}; turbulence on; printCoeffs on; }}\n"
         path = case_dir / "constant" / "turbulenceProperties"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
@@ -609,6 +614,7 @@ class OpenFOAMCase:
         reference_length: float = 0.25,     # m (arm length)
         application: str        = "simpleFoam",
         n_iterations: int       = 500,
+        turbulence_model: str   = "kOmegaSST",
     ) -> None:
         self._dir    = Path(case_dir)
         self._flow   = flow
@@ -616,6 +622,7 @@ class OpenFOAMCase:
         self._lref   = reference_length
         self._app    = application
         self._niter  = n_iterations
+        self._turb   = turbulence_model
         self._writer = FoamDictWriter()
 
     # ── Setup ─────────────────────────────────────────────────────────────────
@@ -627,6 +634,7 @@ class OpenFOAMCase:
         n_cells:           Tuple = (40, 20, 20),
         n_refinement:      int   = 3,
         n_surface_layers:  int   = 3,
+        turbulence_model:  Optional[str] = None,
     ) -> None:
         """Generate all OpenFOAM dictionaries for this case."""
         self._dir.mkdir(parents=True, exist_ok=True)
@@ -653,8 +661,9 @@ class OpenFOAMCase:
                                           n_refinement, n_surface_layers)
 
         # Constant
+        turb_choice = turbulence_model or self._turb
         w.write_transport_properties(self._dir, self._flow.kinematic_viscosity)
-        w.write_turbulence_properties(self._dir)
+        w.write_turbulence_properties(self._dir, model=turb_choice)
 
         # 0/
         w.write_initial_conditions(self._dir, self._flow)

@@ -41,6 +41,7 @@ import numpy as np
 
 from .benchmarks import EuRoCDatasetLoader, ZurichUAVDatasetLoader, BenchmarkTrajectory
 from .flight_log_validator import RealFlightLogValidator, RealFlightValidationReport
+from .aerodynamic_benchmarks import UIUCPropellerDatasetLoader, AeroBenchmarkReport
 
 
 # ─────────────────────────────────────────────────────────────────────────────

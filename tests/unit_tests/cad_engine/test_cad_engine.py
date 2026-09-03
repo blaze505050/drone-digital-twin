@@ -289,6 +289,30 @@ class TestMassEstimator:
         assert "ixx" in d
         assert "cg" in d
 
+    def test_exact_cube_inertia_mirtich(self, unit_cube):
+        """Verify Mirtich exact polyhedral inertia against analytical textbook solution: I = m * L^2 / 6."""
+        density = 1000.0
+        props = MassEstimator.from_mesh(unit_cube, density_kg_m3=density)
+        # Analytical mass = 1000 kg, I = 1000 * 1^2 / 6 = 166.667 kg*m^2
+        expected_inertia = 1000.0 / 6.0
+        assert abs(props.mass_kg - 1000.0) < 1e-4
+        assert abs(props.ixx - expected_inertia) < 1e-2
+        assert abs(props.iyy - expected_inertia) < 1e-2
+        assert abs(props.izz - expected_inertia) < 1e-2
+        # Off-diagonal products must be zero for symmetric cube about CG
+        assert abs(props.ixy) < 1e-4
+        assert abs(props.ixz) < 1e-4
+        assert abs(props.iyz) < 1e-4
+
+    def test_to_twin_physics_params(self, unit_cube):
+        """Test bridging CAD mass properties directly into ClosedLoopDigitalTwin physics."""
+        props = MassEstimator.from_mesh(unit_cube, density_kg_m3=1.5)
+        twin_params = props.to_twin_physics_params(arm_length_m=0.30, max_thrust_motor_n=8.0)
+        assert abs(twin_params.mass_kg - 1.5) < 1e-3
+        assert twin_params.arm_length_m == 0.30
+        assert twin_params.max_thrust_motor_n == 8.0
+        assert twin_params.ixx > 0
+
     def test_quadrotor_mass_reasonable(self):
         m = DroneGeometryBuilder.quadrotor_x(arm_length=0.25)
         # Carbon fibre density ~1600 kg/m³, thin wall → ~0.3-2 kg typical

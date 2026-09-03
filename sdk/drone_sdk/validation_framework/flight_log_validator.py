@@ -66,16 +66,16 @@ class RealFlightLogValidator:
         self.vehicle_id = vehicle_id
 
     @staticmethod
-    def generate_asl_firefly_real_flight_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Generate a realistic, real-physics AscTec Firefly flight profile.
+    def synthesize_firefly_flight_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Generate a realistic synthetic AscTec Firefly flight benchmark profile.
 
-        Returns (timestamps, imu_accel, imu_gyro, gps_pos, ground_truth_pos).
+        Returns (timestamps, imu_accel, imu_gyro, gps_pos, ground_truth_pos, ground_truth_vel, ground_truth_att).
         """
         n_pts = 500
         dt = 0.02
         t = np.arange(n_pts) * dt
 
-        # Real aggressive trajectory: figure-8 pattern with altitude change
+        # Figure-8 trajectory with altitude profile
         omega = 2.0 * math.pi / 10.0
         gt_x = 4.0 * np.sin(omega * t)
         gt_y = 2.5 * np.sin(2.0 * omega * t)
@@ -88,20 +88,33 @@ class RealFlightLogValidator:
         gt_vz = -0.4 * omega * np.cos(0.5 * omega * t)
         gt_vel = np.column_stack([gt_vx, gt_vy, gt_vz])
 
-        # Specific force (accel - gravity)
-        ax = np.gradient(gt_vx, dt) + np.random.normal(0, 0.08, n_pts)
-        ay = np.gradient(gt_vy, dt) + np.random.normal(0, 0.08, n_pts)
-        az = np.gradient(gt_vz, dt) - 9.81 + np.random.normal(0, 0.08, n_pts)
+        # Attitudes (estimated bank angles)
+        roll = np.arctan2(gt_vy, 9.81) * 0.4
+        pitch = -np.arctan2(gt_vx, 9.81) * 0.4
+        yaw = np.arctan2(gt_vy, np.maximum(1e-3, gt_vx))
+        gt_att = np.column_stack([roll, pitch, yaw])
+
+        # Specific force (accel - gravity in body frame)
+        ax = np.gradient(gt_vx, dt) + np.random.normal(0, 0.05, n_pts)
+        ay = np.gradient(gt_vy, dt) + np.random.normal(0, 0.05, n_pts)
+        az = np.gradient(gt_vz, dt) - 9.81 + np.random.normal(0, 0.05, n_pts)
         imu_acc = np.column_stack([ax, ay, az])
 
-        # Angular rate
-        gx = 0.15 * np.cos(omega * t) + np.random.normal(0, 0.015, n_pts)
-        gy = 0.12 * np.sin(omega * t) + np.random.normal(0, 0.015, n_pts)
-        gz = 0.08 * np.cos(2.0 * omega * t) + np.random.normal(0, 0.01, n_pts)
+        # Angular rates
+        gx = np.gradient(roll, dt) + np.random.normal(0, 0.01, n_pts)
+        gy = np.gradient(pitch, dt) + np.random.normal(0, 0.01, n_pts)
+        gz = np.gradient(yaw, dt) + np.random.normal(0, 0.01, n_pts)
         imu_gyro = np.column_stack([gx, gy, gz])
 
-        # GPS fix with sensor noise and latency
-        gps_pos = gt_pos + np.random.normal(0, 0.15, gt_pos.shape)
+        # GPS position and Doppler velocity fix
+        gps_pos = gt_pos + np.random.normal(0, 0.10, gt_pos.shape)
+        gps_vel = gt_vel + np.random.normal(0, 0.05, gt_vel.shape)
+        return t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att, gps_vel
+
+    @classmethod
+    def generate_asl_firefly_real_flight_data(cls):
+        """Backward-compatibility alias."""
+        t, imu_acc, imu_gyro, gps_pos, gt_pos, _, _, _ = cls.synthesize_firefly_flight_data()
         return t, imu_acc, imu_gyro, gps_pos, gt_pos
 
     def evaluate_flight(
@@ -112,10 +125,14 @@ class RealFlightLogValidator:
         """Run real flight log through ClosedLoopDigitalTwin and calculate ATE."""
         is_real_file = False
         if csv_path and Path(csv_path).exists():
-            t, imu_acc, imu_gyro, gps_pos, gt_pos = self._parse_flight_csv(Path(csv_path))
+            t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att = self._parse_flight_csv(Path(csv_path))
+            # GPS Doppler velocity from finite diff if not directly logged
+            dt_grad = np.gradient(t)
+            dt_grad[dt_grad <= 0] = 0.02
+            gps_vel_stream = np.gradient(gps_pos, axis=0) / dt_grad[:, None]
             is_real_file = True
         else:
-            t, imu_acc, imu_gyro, gps_pos, gt_pos = self.generate_asl_firefly_real_flight_data()
+            t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att, gps_vel_stream = self.synthesize_firefly_flight_data()
 
         twin = ClosedLoopDigitalTwin(vehicle_id=self.vehicle_id, init_pos_ned=gps_pos[0])
 
@@ -125,11 +142,13 @@ class RealFlightLogValidator:
             gyro_b=imu_gyro[0],
             dt=0.02,
             gps_pos=gps_pos[0],
-            gps_vel=np.zeros(3),
+            gps_vel=gps_vel_stream[0],
         )
         twin.seed(init_state)
 
         est_positions = []
+        est_velocities = []
+        est_attitudes = []
         residuals = []
         action_hover = np.full(4, 0.55)
 
@@ -138,18 +157,17 @@ class RealFlightLogValidator:
             if dt <= 0 or dt > 0.5:
                 dt = 0.02
 
-            # Compute GPS velocity from consecutive fixes
-            gps_v = (gps_pos[i] - gps_pos[i - 1]) / dt
-
             # Feed real sensor observations into MEKF
             est_s = twin.update_sensors(
                 accel_b=imu_acc[i],
                 gyro_b=imu_gyro[i],
                 dt=dt,
                 gps_pos=gps_pos[i],
-                gps_vel=gps_v,
+                gps_vel=gps_vel_stream[i],
             )
             est_positions.append([est_s.x, est_s.y, est_s.z])
+            est_velocities.append([est_s.vx, est_s.vy, est_s.vz])
+            est_attitudes.append([est_s.roll, est_s.pitch, est_s.yaw])
 
             # Seed twin with authoritative state and step 1-step ahead prediction
             twin.seed(est_s)
@@ -157,12 +175,26 @@ class RealFlightLogValidator:
             residuals.append(res.health_score)
 
         est_pos_arr = np.array(est_positions)
-        gt_trimmed = gt_pos[1:]
+        est_vel_arr = np.array(est_velocities)
+        est_att_arr = np.array(est_attitudes)
 
-        # Compute Absolute Trajectory Error (ATE)
-        pos_errors = np.linalg.norm(est_pos_arr - gt_trimmed, axis=1)
+        gt_pos_trimmed = gt_pos[1:]
+        gt_vel_trimmed = gt_vel[1:]
+        gt_att_trimmed = gt_att[1:]
+
+        # Compute Absolute Trajectory Error (ATE) RMSE and max
+        pos_errors = np.linalg.norm(est_pos_arr - gt_pos_trimmed, axis=1)
         ate_rmse = float(np.sqrt(np.mean(pos_errors ** 2)))
         ate_max = float(np.max(pos_errors))
+
+        # Dynamically compute velocity RMSE
+        vel_errors = np.linalg.norm(est_vel_arr - gt_vel_trimmed, axis=1)
+        vel_rmse = float(np.sqrt(np.mean(vel_errors ** 2)))
+
+        # Dynamically compute attitude error RMSE
+        att_errors = np.abs(est_att_arr - gt_att_trimmed)
+        att_errors = np.arctan2(np.sin(att_errors), np.cos(att_errors))
+        att_rmse_deg = float(np.degrees(np.sqrt(np.mean(att_errors ** 2))))
 
         # Total distance
         diffs = np.diff(gt_pos, axis=0)
@@ -177,8 +209,8 @@ class RealFlightLogValidator:
             total_flight_dist_m=total_dist,
             pos_ate_rmse_m=ate_rmse,
             pos_ate_max_m=ate_max,
-            vel_rmse_m_s=0.085,
-            att_rmse_deg=1.45,
+            vel_rmse_m_s=vel_rmse,
+            att_rmse_deg=att_rmse_deg,
             mean_twin_health=mean_health,
             is_real_vehicle_log=is_real_file,
         )
@@ -199,4 +231,12 @@ class RealFlightLogValidator:
         imu_gyro = data[:, 4:7]
         gt_pos = data[:, 7:10]
         gps_pos = gt_pos + np.random.normal(0, 0.10, gt_pos.shape)
-        return t, imu_acc, imu_gyro, gps_pos, gt_pos
+
+        dt = np.gradient(t)
+        dt[dt <= 0] = 0.02
+        gt_vel = np.gradient(gt_pos, axis=0) / dt[:, None]
+        roll = np.arctan2(gt_vel[:, 1], 9.81) * 0.4
+        pitch = -np.arctan2(gt_vel[:, 0], 9.81) * 0.4
+        yaw = np.arctan2(gt_vel[:, 1], np.maximum(1e-3, gt_vel[:, 0]))
+        gt_att = np.column_stack([roll, pitch, yaw])
+        return t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att

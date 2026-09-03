@@ -319,6 +319,22 @@ class MassProperties:
             [-self.ixz, -self.iyz,  self.izz],
         ])
 
+    def to_twin_physics_params(
+        self,
+        arm_length_m: float = 0.25,
+        max_thrust_motor_n: float = 6.62,
+    ):
+        """Bridge CAD mass properties directly into ClosedLoopDigitalTwin physics model."""
+        from drone_sdk.digital_twin_core.twin_model import TwinPhysicsParameters
+        return TwinPhysicsParameters(
+            mass_kg=max(0.01, float(self.mass_kg)),
+            ixx=max(1e-6, float(self.ixx)),
+            iyy=max(1e-6, float(self.iyy)),
+            izz=max(1e-6, float(self.izz)),
+            arm_length_m=arm_length_m,
+            max_thrust_motor_n=max_thrust_motor_n,
+        )
+
     def to_dict(self) -> dict:
         return {
             "mass_kg": self.mass_kg,
@@ -329,17 +345,15 @@ class MassProperties:
 
 
 class MassEstimator:
-    """Estimate mass properties from a mesh and material density.
+    """Estimate exact polyhedral mass properties from triangulated geometry and material density.
 
-    Uses the divergence theorem to compute the enclosed volume, then
-    distributes mass uniformly.  For hollow structures, use wall_thickness
-    to get approximate shell mass.
-
-    Usage::
-
-        mesh  = DroneGeometryBuilder.quadrotor_x(arm_length=0.25)
-        props = MassEstimator.from_mesh(mesh, density_kg_m3=1200.0)
-        print(props.mass_kg)
+    Implements Brian Mirtich's exact polyhedral mass properties algorithm (Mirtich 1996,
+    "Fast and Accurate Computation of Polyhedral Mass Properties", Journal of Graphics Tools).
+    Decomposes closed surface mesh into signed tetrahedra from origin to compute:
+      - Exact volume and mass
+      - Exact center of mass (CG)
+      - Exact 3x3 inertia tensor with products of inertia (ixx, iyy, izz, ixy, ixz, iyz)
+        evaluated about the true center of mass.
     """
 
     @staticmethod
@@ -348,27 +362,103 @@ class MassEstimator:
         density_kg_m3:   float = 1200.0,
         wall_thickness:  float = 0.0,    # 0 = solid, >0 = thin-walled
     ) -> MassProperties:
-        """Estimate mass properties assuming uniform density."""
-        # Signed volume via divergence theorem
-        v = MassEstimator._signed_volume(mesh)
-        if wall_thickness > 0:
-            mass = mesh.surface_area * wall_thickness * density_kg_m3
-        else:
-            mass = abs(v) * density_kg_m3
+        """Estimate mass properties using exact polyhedral tetrahedral decomposition."""
+        if mesh.n_faces == 0 or mesh.n_vertices == 0:
+            return MassProperties(mass_kg=0.0, cg=np.zeros(3), ixx=0.0, iyy=0.0, izz=0.0)
 
-        cg   = mesh.centroid
-        # Approximate inertia using bounding box (conservative estimate)
-        bb   = mesh.bounding_box
-        lx   = bb.size.x
-        ly   = bb.size.y
-        lz   = bb.size.z
-        ixx  = mass * (ly**2 + lz**2) / 12.0
-        iyy  = mass * (lx**2 + lz**2) / 12.0
-        izz  = mass * (lx**2 + ly**2) / 12.0
+        v0 = mesh.vertices[mesh.faces[:, 0]]
+        v1 = mesh.vertices[mesh.faces[:, 1]]
+        v2 = mesh.vertices[mesh.faces[:, 2]]
+
+        # Signed determinant of [v0, v1, v2] for each triangle
+        det = np.einsum("ij,ij->i", v0, np.cross(v1, v2))
+        vol = float(np.sum(det)) / 6.0
+
+        # Handle degenerate/thin meshes or explicit shell thickness
+        if abs(vol) < 1e-9 or wall_thickness > 0:
+            if wall_thickness > 0:
+                mass = mesh.surface_area * wall_thickness * density_kg_m3
+            else:
+                mass = max(0.01, abs(vol) * density_kg_m3)
+            bb = mesh.bounding_box
+            lx, ly, lz = bb.size.x, bb.size.y, bb.size.z
+            return MassProperties(
+                mass_kg=mass, cg=mesh.centroid,
+                ixx=mass * (ly**2 + lz**2) / 12.0,
+                iyy=mass * (lx**2 + lz**2) / 12.0,
+                izz=mass * (lx**2 + ly**2) / 12.0,
+            )
+
+        sign = 1.0 if vol >= 0 else -1.0
+        vol = abs(vol)
+        mass = vol * density_kg_m3
+
+        # 1. Exact Center of Gravity via Divergence Theorem / Tetrahedra
+        # For each tetrahedron, integral of (x, y, z) is (det / 24) * (v0 + v1 + v2)
+        v_sum = v0 + v1 + v2
+        cg_integ = np.sum(det[:, None] * v_sum, axis=0) / 24.0
+        cg = cg_integ / (vol * 6.0 / 6.0) if vol > 1e-9 else mesh.centroid
+
+        # 2. Second-order moments of inertia about the coordinate origin (Mirtich 1996)
+        x0, y0, z0 = v0[:, 0], v0[:, 1], v0[:, 2]
+        x1, y1, z1 = v1[:, 0], v1[:, 1], v1[:, 2]
+        x2, y2, z2 = v2[:, 0], v2[:, 1], v2[:, 2]
+
+        # Monomial integrals: int(x^2 dV), int(y^2 dV), int(z^2 dV)
+        int_x2 = np.sum(det * (x0**2 + x1**2 + x2**2 + x0*x1 + x1*x2 + x2*x0)) / 60.0
+        int_y2 = np.sum(det * (y0**2 + y1**2 + y2**2 + y0*y1 + y1*y2 + y2*y0)) / 60.0
+        int_z2 = np.sum(det * (z0**2 + z1**2 + z2**2 + z0*z1 + z1*z2 + z2*z0)) / 60.0
+
+        # Monomial cross-product integrals: int(x*y dV), int(y*z dV), int(x*z dV)
+        int_xy = np.sum(det * (
+            x0 * (2*y0 + y1 + y2) +
+            x1 * (y0 + 2*y1 + y2) +
+            x2 * (y0 + y1 + 2*y2)
+        )) / 120.0
+
+        int_yz = np.sum(det * (
+            y0 * (2*z0 + z1 + z2) +
+            y1 * (z0 + 2*z1 + z2) +
+            y2 * (z0 + z1 + 2*z2)
+        )) / 120.0
+
+        int_xz = np.sum(det * (
+            x0 * (2*z0 + z1 + z2) +
+            x1 * (z0 + 2*z1 + z2) +
+            x2 * (z0 + z1 + 2*z2)
+        )) / 120.0
+
+        # Raw moments of inertia about origin
+        Ixx_orig = density_kg_m3 * (int_y2 + int_z2)
+        Iyy_orig = density_kg_m3 * (int_x2 + int_z2)
+        Izz_orig = density_kg_m3 * (int_x2 + int_y2)
+        Ixy_orig = density_kg_m3 * int_xy
+        Ixz_orig = density_kg_m3 * int_xz
+        Iyz_orig = density_kg_m3 * int_yz
+
+        # 3. Parallel Axis Theorem: translate inertia tensor to Centre of Gravity (CG)
+        cx, cy, cz = float(cg[0]), float(cg[1]), float(cg[2])
+        ixx = float(Ixx_orig - mass * (cy**2 + cz**2))
+        iyy = float(Iyy_orig - mass * (cx**2 + cz**2))
+        izz = float(Izz_orig - mass * (cx**2 + cy**2))
+        ixy = float(Ixy_orig - mass * (cx * cy))
+        ixz = float(Ixz_orig - mass * (cx * cz))
+        iyz = float(Iyz_orig - mass * (cy * cz))
+
+        # Ensure positive-definite diagonal
+        ixx = max(1e-7, abs(ixx))
+        iyy = max(1e-7, abs(iyy))
+        izz = max(1e-7, abs(izz))
 
         return MassProperties(
-            mass_kg=mass, cg=cg,
-            ixx=ixx, iyy=iyy, izz=izz,
+            mass_kg=float(mass),
+            cg=cg,
+            ixx=ixx,
+            iyy=iyy,
+            izz=izz,
+            ixy=float(ixy),
+            ixz=float(ixz),
+            iyz=float(iyz),
         )
 
     @staticmethod
@@ -469,6 +559,27 @@ class DroneGeometryBuilder:
             material=mat,
             motor_mass_kg=motor_mass_kg,
             payload_mass_kg=payload_mass_kg,
+        )
+
+    @staticmethod
+    def to_propeller_geometry(
+        diameter_inch: float = 10.0,
+        pitch_inch: float = 4.7,
+        num_blades: int = 2,
+    ) -> PropellerGeometry:
+        """Construct matching BEMT PropellerGeometry directly from CAD airframe specs."""
+        radius_m = (diameter_inch * 0.0254) / 2.0
+        hub_radius_m = radius_m * 0.12
+        root_pitch_deg = math.degrees(math.atan2(pitch_inch * 0.0254, 2.0 * math.pi * hub_radius_m))
+        tip_pitch_deg = math.degrees(math.atan2(pitch_inch * 0.0254, 2.0 * math.pi * radius_m))
+        return PropellerGeometry(
+            radius=radius_m,
+            hub_radius=hub_radius_m,
+            num_blades=num_blades,
+            root_chord=radius_m * 0.18,
+            tip_chord=radius_m * 0.08,
+            root_twist_deg=float(root_pitch_deg),
+            tip_twist_deg=float(tip_pitch_deg),
         )
 
     @staticmethod

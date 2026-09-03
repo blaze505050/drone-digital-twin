@@ -53,12 +53,14 @@ class OnlineRecalibrator:
         self.window_size = window_size
         self.recal_interval = recal_interval_frames
 
-        if twin_model is not None:
-            self.nominal_mass = twin_model.params.mass_kg
-            self.nominal_thrust = twin_model.params.max_thrust_motor_n
+        if twin_model is not None and hasattr(twin_model, "params"):
+            self.nominal_mass = float(twin_model.params.mass_kg)
+            self.nominal_thrust = float(twin_model.params.max_thrust_motor_n)
+            self.nominal_cd = float(getattr(twin_model.params, "cd_translational", 1.05))
         else:
             self.nominal_mass = nominal_mass_kg if nominal_mass_kg is not None else 1.50
             self.nominal_thrust = nominal_max_thrust_n if nominal_max_thrust_n is not None else 6.62
+            self.nominal_cd = 1.05
 
         self._buffer: Deque[RecalibrationRecord] = collections.deque(maxlen=window_size)
         self._frame_count = 0
@@ -164,13 +166,9 @@ class OnlineRecalibrator:
         # Apply to twin model
         if hasattr(self.twin_model, "params"):
             p = getattr(self.twin_model, "params")
-            nominal_mass = 1.50
-            nominal_thrust = 6.62
-            nominal_cd = 1.05
-
-            p.mass_kg = nominal_mass * self._last_calibrated_scales["mass_scale"]
-            p.max_thrust_motor_n = nominal_thrust * self._last_calibrated_scales["thrust_scale"]
-            p.cd_translational = nominal_cd * self._last_calibrated_scales["drag_scale"]
+            p.mass_kg = self.nominal_mass * self._last_calibrated_scales["mass_scale"]
+            p.max_thrust_motor_n = self.nominal_thrust * self._last_calibrated_scales["thrust_scale"]
+            p.cd_translational = self.nominal_cd * self._last_calibrated_scales["drag_scale"]
 
         self._recal_count += 1
         return self._last_calibrated_scales
