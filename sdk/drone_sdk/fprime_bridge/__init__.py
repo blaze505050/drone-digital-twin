@@ -1,15 +1,20 @@
 """
 drone_sdk.fprime_bridge
 =======================
-NASA F Prime (F') Flight Software SITL & HIL Integration Bridge.
+NASA F Prime (F') Inspired Flight Software Protocol & SITL Bridge.
+
+Note: This module provides a lightweight, clean-room protocol and SITL/HIL
+bridge inspired by NASA JPL's F Prime (F') component-based flight software
+architecture (using F'-style packet type identifiers, channelized telemetry,
+and command opcodes with 0x5A5A5A5A sync framing and CRC32 verification).
+It is designed for rapid digital twin validation and software-in-the-loop
+simulation; it is not a direct wire-compatible drop-in for compiled C++ FPP /
+fprime-gds deployments.
 
 Architecture:
-  - protocol: Wire framing (0x5A5A5A5A, packet types, CRC32, channel serialization).
+  - protocol: F'-inspired framing (0x5A5A5A5A, packet types, CRC32, channel serialization).
   - bridge: Bidirectional TCP/UDP and loopback socket stream engine (FPrimeSITLBridge).
   - source: TelemetryEngine / SourceArbiter adapter (FPrimeTelemetrySource).
-
-Enables seamless software-in-the-loop and hardware-in-the-loop flight control
-using NASA JPL's component-based flight software framework.
 
 Python version: 3.9+
 """

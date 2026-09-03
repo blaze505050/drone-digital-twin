@@ -43,13 +43,22 @@ class OnlineRecalibrator:
 
     def __init__(
         self,
-        twin_model: object,
-        window_size: int = 80,
-        recal_interval_frames: int = 40,
+        twin_model: Optional[object] = None,
+        window_size: int = 60,
+        recal_interval_frames: int = 30,
+        nominal_mass_kg: Optional[float] = None,
+        nominal_max_thrust_n: Optional[float] = None,
     ) -> None:
         self.twin_model = twin_model
         self.window_size = window_size
         self.recal_interval = recal_interval_frames
+
+        if twin_model is not None:
+            self.nominal_mass = twin_model.params.mass_kg
+            self.nominal_thrust = twin_model.params.max_thrust_motor_n
+        else:
+            self.nominal_mass = nominal_mass_kg if nominal_mass_kg is not None else 1.50
+            self.nominal_thrust = nominal_max_thrust_n if nominal_max_thrust_n is not None else 6.62
 
         self._buffer: Deque[RecalibrationRecord] = collections.deque(maxlen=window_size)
         self._frame_count = 0
@@ -111,8 +120,10 @@ class OnlineRecalibrator:
             k_t_m = float(coeffs[0])
             k_d_m = float(coeffs[1])
 
-            # Extract scale factors relative to nominal values
-            nominal_k_t_m = (4.0 * 6.62) / 1.50  # ~17.65
+            # Extract scale factors relative to configured nominal parameters
+            nominal_mass = self.twin_model.params.mass_kg if self.twin_model is not None else self.nominal_mass
+            nominal_thrust = self.twin_model.params.max_thrust_motor_n if self.twin_model is not None else self.nominal_thrust
+            nominal_k_t_m = (4.0 * nominal_thrust) / max(1e-3, nominal_mass)
             if k_t_m > 5.0 and k_t_m < 35.0:
                 thrust_scale = float(k_t_m / nominal_k_t_m)
             else:

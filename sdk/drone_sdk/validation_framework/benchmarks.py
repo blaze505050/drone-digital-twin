@@ -23,7 +23,7 @@ import csv
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 
@@ -67,21 +67,25 @@ class EuRoCDatasetLoader:
     def __init__(self, sequence: str = "V1_01_easy", data_path: Optional[Union[str, Path]] = None) -> None:
         self.sequence = sequence
         self.data_path = Path(data_path) if data_path else None
+        self.is_synthetic_fallback: bool = False
         self._trajectory: BenchmarkTrajectory = self._load_or_synthesize()
 
     def _load_or_synthesize(self) -> BenchmarkTrajectory:
         if self.data_path and self.data_path.exists():
             try:
-                return self._parse_asl_csv(self.data_path)
+                traj = self._parse_asl_csv(self.data_path)
+                self.is_synthetic_fallback = False
+                return traj
             except Exception:
                 pass
+        self.is_synthetic_fallback = True
         return self._generate_euroc_v101_benchmark()
 
     def _parse_asl_csv(self, path: Path) -> BenchmarkTrajectory:
         rows = []
         with open(path, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
-            header = next(reader, None)
+            _ = next(reader, None)
             for r in reader:
                 if not r or r[0].startswith("#"):
                     continue
@@ -229,6 +233,7 @@ class ZurichUAVDatasetLoader:
     def __init__(self, sequence: str = "urban_street_01", data_path: Optional[Union[str, Path]] = None) -> None:
         self.sequence = sequence
         self.data_path = Path(data_path) if data_path else None
+        self.is_synthetic_fallback: bool = True
         self._trajectory: BenchmarkTrajectory = self._generate_zurich_benchmark()
 
     def _generate_zurich_benchmark(self) -> BenchmarkTrajectory:

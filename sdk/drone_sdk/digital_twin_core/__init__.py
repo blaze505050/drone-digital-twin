@@ -43,9 +43,11 @@ class ClosedLoopDigitalTwin:
         self,
         vehicle_id: str = "drone_0",
         params: Optional[TwinPhysicsParameters] = None,
+        init_pos_ned: Optional[np.ndarray] = None,
+        init_yaw_rad: float = 0.0,
     ) -> None:
         self.vehicle_id = vehicle_id
-        self.estimator = MultiplicativeEKF(vehicle_id=vehicle_id)
+        self.estimator = MultiplicativeEKF(vehicle_id=vehicle_id, init_pos_ned=init_pos_ned, init_yaw_rad=init_yaw_rad)
         self.twin_model = DynamicTwinModel(vehicle_id=vehicle_id, params=params)
         self.residual_monitor = TwinResidualMonitor()
         self.recalibrator = OnlineRecalibrator(twin_model=self.twin_model)

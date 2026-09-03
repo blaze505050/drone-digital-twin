@@ -59,6 +59,7 @@ class NASABatteryDatasetAdapter:
         self.cell_id = cell_id
         self.data_path = Path(data_path) if data_path else None
         self._cycles: List[NASACycleRecord] = []
+        self.is_synthetic_fallback: bool = False
         self._load_or_synthesize()
 
     def _load_or_synthesize(self) -> None:
@@ -66,12 +67,15 @@ class NASABatteryDatasetAdapter:
         if self.data_path and self.data_path.exists():
             if self.data_path.suffix.lower() == ".mat":
                 self._load_from_mat(self.data_path)
+                self.is_synthetic_fallback = False
                 return
             elif self.data_path.suffix.lower() in (".json", ".txt"):
                 self._load_from_json(self.data_path)
+                self.is_synthetic_fallback = False
                 return
 
         # Generate standard NASA Ames B0005 empirical aging dataset
+        self.is_synthetic_fallback = True
         self._cycles = self._generate_b0005_benchmark()
 
     def _load_from_mat(self, path: Path) -> None:

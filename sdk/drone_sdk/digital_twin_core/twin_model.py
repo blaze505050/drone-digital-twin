@@ -45,6 +45,8 @@ class TwinPhysicsParameters:
     max_thrust_motor_n: float = 6.62   # m * g * 0.45
     rotor_polar_inertia: float = 1.5e-5
     prop_radius_m:     float = 0.127
+    motor_thrust_coeff: float = 1.5e-5
+    motor_torque_coeff: float = 0.015
 
 
 class DynamicTwinModel:
@@ -65,6 +67,13 @@ class DynamicTwinModel:
         self.omega = np.zeros(3, dtype=np.float64)
         self.motor_thrusts = np.zeros(4, dtype=np.float64)
 
+        # Vehicle status tracking
+        self.flight_mode = FlightMode.POSITION_HOLD
+        self.arming_state = ArmingState.ARMED
+        self.health_status = HealthStatus.NOMINAL
+        self.gps_fix_type = 3
+        self.gps_satellites = 14
+
         self._seq = 0
         self._last_cmd = np.zeros(4)
 
@@ -77,6 +86,11 @@ class DynamicTwinModel:
         if norm_q > 1e-6:
             self.quat /= norm_q
         self.omega = np.array([state.roll_rate, state.pitch_rate, state.yaw_rate], dtype=np.float64)
+        self.flight_mode = state.flight_mode
+        self.arming_state = state.arming_state
+        self.health_status = state.health_status
+        self.gps_fix_type = state.gps_fix_type
+        self.gps_satellites = state.gps_satellites
 
     def update_parameters(self, **kwargs: float) -> None:
         """Dynamically adapt parameters during online recalibration."""
@@ -124,10 +138,10 @@ class DynamicTwinModel:
             arms = p.arm_length_m
             tau_roll  = (thrusts[0] + thrusts[2] - thrusts[1] - thrusts[3]) * arms
             tau_pitch = (thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]) * arms
-            tau_yaw   = (thrusts[0] + thrusts[3] - thrusts[1] - thrusts[2]) * 0.015
+            tau_yaw   = (thrusts[0] + thrusts[3] - thrusts[1] - thrusts[2]) * p.motor_torque_coeff
 
             # 4. Rotor gyroscopic reaction torque
-            omega_rotors = np.sqrt(np.maximum(thrusts, 0.0) / 1.5e-5)
+            omega_rotors = np.sqrt(np.maximum(thrusts, 0.0) / max(1e-9, p.motor_thrust_coeff))
             net_h = p.rotor_polar_inertia * (omega_rotors[0] + omega_rotors[2] - omega_rotors[1] - omega_rotors[3])
             tau_gyro = np.array([
                 -self.omega[1] * net_h,
@@ -183,9 +197,9 @@ class DynamicTwinModel:
             timestamp_mono=time.monotonic(),
             timestamp_sim=0.0,
             source=DataSource.TWIN,
-            flight_mode=FlightMode.POSITION_HOLD,
-            arming_state=ArmingState.ARMED,
-            health_status=HealthStatus.NOMINAL,
+            flight_mode=self.flight_mode,
+            arming_state=self.arming_state,
+            health_status=self.health_status,
             x=float(self.pos[0]),
             y=float(self.pos[1]),
             z=float(self.pos[2]),
@@ -205,8 +219,8 @@ class DynamicTwinModel:
             roll_rate=float(self.omega[0]),
             pitch_rate=float(self.omega[1]),
             yaw_rate=float(self.omega[2]),
-            gps_fix_type=3,
-            gps_satellites=16,
+            gps_fix_type=self.gps_fix_type,
+            gps_satellites=self.gps_satellites,
             altitude_agl=float(max(0.0, -self.pos[2])),
             is_valid=True,
         )

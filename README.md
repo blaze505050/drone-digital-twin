@@ -8,13 +8,13 @@
   <img src="https://img.shields.io/badge/Architecture-Closed--Loop%20Twin-purple" />
 </p>
 
-A **production-grade, closed-loop UAV Digital Twin ecosystem** implementing
+A **multi-physics, closed-loop UAV Digital Twin ecosystem** implementing
 28 integrated modules across aerospace physics, flight simulation, state estimation,
-NASA flight software, 3D computer vision, and sim-to-real autonomy:
+flight computer protocols, 3D computer vision, and sim-to-real autonomy:
 
 - **Closed-Loop Digital Twin**: 15-state Multiplicative EKF (MEKF) fusing IMU, GPS, Baro, and Mag with parallel 6-DOF forward dynamic simulation, real-time divergence monitoring, and online system-identification recalibration.
-- **NASA F' (F Prime) SITL Bridge**: Native integration with NASA JPL's component-based flight software framework with binary wire framing (`0x5A5A5A5A`, CRC32) and telemetry channelization.
-- **Glob3R 3D Vision Perception**: Global Structure-from-Motion with 3D Foundation Models generating dense 3D pseudo-LiDAR point clouds, 3D voxel occupancy grids, and terrain landing zone analysis purely from vision.
+- **NASA F' (F Prime) Inspired SITL Bridge**: Clean-room SITL/HIL protocol bridge inspired by NASA JPL's component-based flight software architecture with binary wire framing (`0x5A5A5A5A`, CRC32) and telemetry channelization.
+- **Glob3R-Inspired 3D Vision Perception**: Classical geometric 3D vision, volumetric voxel grids, and pseudo-LiDAR mapping inspired by the Global SfM / 3D vision paradigm, reconstructing 3D environments without physical LiDAR.
 - **Aerodynamics & Propulsion**: Blade Element Momentum Theory (BEMT) propeller solver with Prandtl loss corrections, OpenFOAM CFD pipeline, and PINN neural aerodynamic surrogates.
 - **Prognostics & Health**: NASA battery degradation dataset (B0005) calibration, Thevenin ECM, finite element structural modal analysis, and autoencoder predictive maintenance.
 - **Flight Autonomy & Sim-to-Real**: Pluggable Command Sinks (Gazebo SITL and MAVLink hardware), YOLO vision perception bridge for GPS-denied relative navigation, and Gymnasium RL flight controller.
@@ -147,8 +147,8 @@ pip install trimesh meshio
 | 24 | `validation_framework.benchmarks`| Aerospace | ASL EuRoC MAV and Zurich Urban UAV benchmark loaders for state estimation validation. |
 | 25 | `digital_twin_core` | Core Twin | 15-state MEKF state estimator, parallel 6-DOF physics twin, residual tracking, and online recalibration. |
 | 26 | `mission_planner.sinks` & `perception_bridge` | Sim-to-Real | Sim-to-Real command sinks (`GazeboCommandSink`, `MAVLinkCommandSink`) and YOLO vision bridge. |
-| 27 | `fprime_bridge` | Flight Stack | NASA F Prime (F') SITL/HIL flight computer bridge with framed telemetry and command channelization. |
-| 28 | `perception_bridge.glob3r` | Perception | Glob3R 3D Vision Perception engine: pseudo-LiDAR point clouds, 3D voxel grids, and landing zone DEMs. |
+| 27 | `fprime_bridge` | Flight Stack | NASA F Prime (F') inspired clean-room SITL/HIL protocol bridge with framed telemetry and command channelization. |
+| 28 | `perception_bridge.glob3r` | Perception | Glob3R-inspired 3D vision perception engine: pseudo-LiDAR point clouds, 3D voxel grids, and landing zone DEMs. |
 
 ---
 

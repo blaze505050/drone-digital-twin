@@ -79,6 +79,13 @@ class MultiplicativeEKF:
         self.sigma_ba = 1e-4       # accel bias random walk
         self.sigma_bg = 1e-5       # gyro bias random walk
 
+        self.default_source = DataSource.SITL
+        self.flight_mode = FlightMode.POSITION_HOLD
+        self.arming_state = ArmingState.ARMED
+        self.health_status = HealthStatus.NOMINAL
+        self.gps_fix_type = 3
+        self.gps_satellites = 14
+
         self._seq = 0
         self._last_time = time.monotonic()
         self._last_accel_b = np.array([0.0, 0.0, -9.81])
@@ -176,8 +183,19 @@ class MultiplicativeEKF:
 
     # ── Update Steps ──────────────────────────────────────────────────────────
 
-    def update_gps(self, pos_ned_gps: np.ndarray, vel_ned_gps: np.ndarray, cov_pos: float = 0.25, cov_vel: float = 0.05) -> None:
+    def update_gps(
+        self,
+        pos_ned_gps: np.ndarray,
+        vel_ned_gps: np.ndarray,
+        cov_pos: float = 0.25,
+        cov_vel: float = 0.05,
+        fix_type: int = 3,
+        satellites: int = 14,
+    ) -> None:
         """Update with GPS position and velocity fix."""
+        self.gps_fix_type = fix_type
+        self.gps_satellites = satellites
+
         # Measurement residual (6x1)
         z = np.concatenate([pos_ned_gps, vel_ned_gps])
         h = np.concatenate([self.p, self.v])
@@ -273,7 +291,13 @@ class MultiplicativeEKF:
 
     # ── State conversion ──────────────────────────────────────────────────────
 
-    def get_state_vector(self) -> DroneStateVector:
+    def get_state_vector(
+        self,
+        source: Optional[DataSource] = None,
+        flight_mode: Optional[FlightMode] = None,
+        arming_state: Optional[ArmingState] = None,
+        health_status: Optional[HealthStatus] = None,
+    ) -> DroneStateVector:
         """Construct authoritative DroneStateVector from current MEKF estimate."""
         self._seq += 1
         q0, q1, q2, q3 = self.q
@@ -285,16 +309,32 @@ class MultiplicativeEKF:
         omega_corrected = self._last_gyro_b - self.b_gyro
         f_corrected = self._last_accel_b - self.b_accel
 
+        # Evaluate health status dynamically from covariance trace and GPS
+        if health_status is not None:
+            resolved_health = health_status
+        else:
+            cov_trace = float(np.trace(self.P[0:3, 0:3]))
+            if cov_trace > 20.0 or not np.all(np.isfinite(self.P)):
+                resolved_health = HealthStatus.CRITICAL
+            elif cov_trace > 5.0 or (self.gps_fix_type > 0 and self.gps_fix_type < 3):
+                resolved_health = HealthStatus.DEGRADED
+            else:
+                resolved_health = self.health_status
+
+        resolved_source = source if source is not None else self.default_source
+        resolved_mode = flight_mode if flight_mode is not None else self.flight_mode
+        resolved_arm = arming_state if arming_state is not None else self.arming_state
+
         return DroneStateVector(
             vehicle_id=self.vehicle_id,
             sequence=self._seq,
             timestamp_wall=time.time(),
             timestamp_mono=time.monotonic(),
             timestamp_sim=0.0,
-            source=DataSource.SITL,
-            flight_mode=FlightMode.POSITION_HOLD,
-            arming_state=ArmingState.ARMED,
-            health_status=HealthStatus.NOMINAL,
+            source=resolved_source,
+            flight_mode=resolved_mode,
+            arming_state=resolved_arm,
+            health_status=resolved_health,
             x=float(self.p[0]),
             y=float(self.p[1]),
             z=float(self.p[2]),
@@ -314,8 +354,8 @@ class MultiplicativeEKF:
             roll_rate=float(omega_corrected[0]),
             pitch_rate=float(omega_corrected[1]),
             yaw_rate=float(omega_corrected[2]),
-            gps_fix_type=3,
-            gps_satellites=16,
+            gps_fix_type=self.gps_fix_type,
+            gps_satellites=self.gps_satellites,
             altitude_agl=float(max(0.0, -self.p[2])),
             is_valid=True,
         )

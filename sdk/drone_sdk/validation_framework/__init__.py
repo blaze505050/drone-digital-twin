@@ -40,6 +40,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 
 from .benchmarks import EuRoCDatasetLoader, ZurichUAVDatasetLoader, BenchmarkTrajectory
+from .flight_log_validator import RealFlightLogValidator, RealFlightValidationReport
 
 
 # ─────────────────────────────────────────────────────────────────────────────

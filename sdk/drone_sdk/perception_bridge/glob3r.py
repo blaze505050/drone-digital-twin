@@ -1,12 +1,14 @@
 """
 drone_sdk.perception_bridge.glob3r
 ==================================
-Glob3R 3D Vision Perception & Pseudo-LiDAR Mapping Engine.
+Glob3R-Inspired 3D Vision Perception & Pseudo-LiDAR Mapping Engine.
 
-Based on "Global Structure-from-Motion with 3D Foundation Models" (Glob3R):
-combines dense vision feature association and depth estimation with global
-geometric optimization (bundle adjustment / motion averaging) to reconstruct
-dense 3D environments purely from camera vision without physical LiDAR hardware.
+Inspired by the global Structure-from-Motion and 3D vision paradigm (Glob3R):
+implements a lightweight, classical geometric 3D vision, volumetric occupancy,
+and pseudo-LiDAR mapping pipeline (independent algorithmic implementation
+without requiring multi-gigabyte deep foundation model weights). Reconstructs
+dense 3D environments, voxel occupancy grids, and elevation maps purely from
+camera vision and poses without physical LiDAR hardware.
 
 Core Outputs:
   1. PointCloud3D: Dense 3D pseudo-LiDAR point cloud with voxel downsampling,
