@@ -27,6 +27,8 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 
+from drone_sdk.contracts.data_status import DataStatus
+
 
 @dataclass
 class BenchmarkTrajectory:
@@ -38,6 +40,7 @@ class BenchmarkTrajectory:
     quat_wxyz:     np.ndarray       # (N, 4) Quaternion [q0, q1, q2, q3]
     accel_body:    np.ndarray       # (N, 3) Specific force in body frame [m/s^2]
     gyro_body:     np.ndarray       # (N, 3) Angular velocity in body frame [rad/s]
+    status:        DataStatus = DataStatus.SYNTHETIC_FALLBACK
 
     @property
     def duration_s(self) -> float:
@@ -115,6 +118,7 @@ class EuRoCDatasetLoader:
             quat_wxyz=quat,
             accel_body=acc,
             gyro_body=gyro,
+            status=DataStatus.REAL,
         )
 
     def _generate_euroc_v101_benchmark(self) -> BenchmarkTrajectory:
@@ -172,6 +176,7 @@ class EuRoCDatasetLoader:
             quat_wxyz=quat_wxyz,
             accel_body=accel_body,
             gyro_body=gyro_body,
+            status=DataStatus.SYNTHETIC_FALLBACK,
         )
 
     @property
@@ -213,6 +218,8 @@ class EuRoCDatasetLoader:
             "max_error_m": round(max_err, 4),
             "r2":         round(r2, 4),
             "trajectory_dist_m": round(self._trajectory.total_distance_m, 2),
+            "data_status": self._trajectory.status.value,
+            "is_empirical": self._trajectory.status.is_empirical,
         }
 
         if estimated_velocities is not None:
@@ -222,6 +229,10 @@ class EuRoCDatasetLoader:
             results["vel_rmse_ms"] = round(float(np.sqrt(np.mean(v_err**2))), 4)
 
         return results
+
+    @property
+    def data_status(self) -> DataStatus:
+        return self._trajectory.status
 
 
 class ZurichUAVDatasetLoader:
@@ -233,8 +244,51 @@ class ZurichUAVDatasetLoader:
     def __init__(self, sequence: str = "urban_street_01", data_path: Optional[Union[str, Path]] = None) -> None:
         self.sequence = sequence
         self.data_path = Path(data_path) if data_path else None
-        self.is_synthetic_fallback: bool = True
-        self._trajectory: BenchmarkTrajectory = self._generate_zurich_benchmark()
+        self.is_synthetic_fallback: bool = False
+        self._trajectory: BenchmarkTrajectory = self._load_or_synthesize()
+
+    def _load_or_synthesize(self) -> BenchmarkTrajectory:
+        if self.data_path and self.data_path.exists():
+            try:
+                traj = self._parse_zurich_csv(self.data_path)
+                self.is_synthetic_fallback = False
+                return traj
+            except Exception:
+                pass
+        self.is_synthetic_fallback = True
+        return self._generate_zurich_benchmark()
+
+    def _parse_zurich_csv(self, path: Path) -> BenchmarkTrajectory:
+        """Parse ETH Zurich RPG Urban dataset ground truth CSV."""
+        rows = []
+        with open(path, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            _ = next(reader, None)
+            for r in reader:
+                if not r or r[0].startswith("#"):
+                    continue
+                rows.append([float(x) for x in r])
+
+        data = np.array(rows, dtype=np.float64)
+        t_s = (data[:, 0] - data[0, 0]) * 1e-9 if data[0, 0] > 1e12 else data[:, 0]
+        pos_ned = data[:, 1:4]
+        quat = data[:, 4:8] if data.shape[1] >= 8 else np.column_stack([np.ones(len(data)), np.zeros((len(data), 3))])
+        dt = np.gradient(t_s)
+        dt[dt <= 0] = 0.02
+        vel_ned = np.gradient(pos_ned, axis=0) / dt[:, None]
+        accel_body = np.gradient(vel_ned, axis=0) / dt[:, None] - np.array([0.0, 0.0, 9.81])
+        gyro_body = np.zeros_like(vel_ned)
+
+        return BenchmarkTrajectory(
+            name=f"Zurich_{self.sequence}",
+            timestamps_s=t_s,
+            pos_ned=pos_ned,
+            vel_ned=vel_ned,
+            quat_wxyz=quat,
+            accel_body=accel_body,
+            gyro_body=gyro_body,
+            status=DataStatus.REAL,
+        )
 
     def _generate_zurich_benchmark(self) -> BenchmarkTrajectory:
         """Generate representative Zurich urban canyon flight path."""
@@ -267,11 +321,16 @@ class ZurichUAVDatasetLoader:
             quat_wxyz=quat,
             accel_body=acc,
             gyro_body=gyro,
+            status=DataStatus.SYNTHETIC_FALLBACK,
         )
 
     @property
     def trajectory(self) -> BenchmarkTrajectory:
         return self._trajectory
+
+    @property
+    def data_status(self) -> DataStatus:
+        return self._trajectory.status
 
     def evaluate_canyon_tracking(self, estimated_positions: np.ndarray) -> Dict[str, float]:
         """Evaluate tracking fidelity through urban canyon corridor."""
@@ -282,4 +341,6 @@ class ZurichUAVDatasetLoader:
             "canyon_rmse_m": round(float(np.sqrt(np.mean(errs**2))), 4),
             "canyon_mae_m":  round(float(np.mean(errs)), 4),
             "max_drift_m":   round(float(np.max(errs)), 4),
+            "data_status":   self._trajectory.status.value,
+            "is_empirical":  self._trajectory.status.is_empirical,
         }

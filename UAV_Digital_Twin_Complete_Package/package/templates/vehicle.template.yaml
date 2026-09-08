@@ -1,0 +1,46 @@
+# PROPOSED TEMPLATE, not an implemented repository schema.
+# null values must be measured/decided before model activation; do not auto-fill.
+schema_version: proposed-1
+asset_id: null
+configuration_id: null
+configuration_hash: null
+maturity: M0
+frames:
+  navigation: NED
+  body: FRD
+  quaternion: Hamilton_wxyz_body_to_navigation
+  gravity_n_m_s2: [0.0, 0.0, 9.80665] # documented reference; local g may differ
+mass:
+  value_kg: null
+  standard_uncertainty_kg: null
+  method: null
+  calibration_id: null
+cg_body_m: null
+inertia_at_cg_body_kg_m2: null # full symmetric 3x3 tensor
+inertia_uncertainty_method: null
+components: [] # ID, mass, CG, tensor, frame transform, material, source hash
+rotors: [] # ID, position relative body origin, thrust unit axis, spin sign, map ID
+battery:
+  pack_id: null
+  chemistry: null
+  series_count: null
+  parallel_count: null
+  nominal_capacity_Ah: null
+  ecm_parameter_version: null
+  manufacturer_limits_source: null
+sensors: [] # ID, frame, calibration, units, clock, noise/covariance description
+operating_domain:
+  approved_mass_range_kg: null
+  validated_rpm_range: null
+  validated_bus_voltage_range_V: null
+  validated_temperature_range_C: null
+  validated_inflow_range_m_s: null
+  flight_test_authorization_reference: null
+model:
+  physics_version: null
+  active_parameter_version: null
+  data_manifest_ids: []
+safety:
+  command_authority: read_only
+  online_parameter_promotion: disabled
+  autopilot_failsafe_configuration_reference: null

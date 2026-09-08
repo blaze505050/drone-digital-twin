@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from drone_sdk.contracts.data_status import DataStatus
 from drone_sdk.digital_twin_core import ClosedLoopDigitalTwin
 from drone_sdk.state_manager.schema import DataSource, FlightMode, ArmingState, HealthStatus
 
@@ -43,6 +44,11 @@ class RealFlightValidationReport:
     att_rmse_deg:        float      # Attitude error RMSE (deg)
     mean_twin_health:    float      # Mean TwinResidualMonitor health score [0..1]
     is_real_vehicle_log: bool       # True for genuine physical vehicle data
+    status:              DataStatus = DataStatus.SYNTHETIC_FALLBACK
+
+    @property
+    def is_empirical(self) -> bool:
+        return self.status.is_empirical
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +62,8 @@ class RealFlightValidationReport:
             "att_rmse_deg":        round(self.att_rmse_deg, 3),
             "twin_health_pct":     round(self.mean_twin_health * 100.0, 1),
             "is_real_vehicle_log": self.is_real_vehicle_log,
+            "data_status":         self.status.value,
+            "is_empirical":        self.is_empirical,
         }
 
 
@@ -124,15 +132,18 @@ class RealFlightLogValidator:
     ) -> RealFlightValidationReport:
         """Run real flight log through ClosedLoopDigitalTwin and calculate ATE."""
         is_real_file = False
+        data_status = DataStatus.SYNTHETIC_FALLBACK
         if csv_path and Path(csv_path).exists():
-            t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att = self._parse_flight_csv(Path(csv_path))
+            t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att, has_gps = self._parse_flight_csv(Path(csv_path))
             # GPS Doppler velocity from finite diff if not directly logged
             dt_grad = np.gradient(t)
             dt_grad[dt_grad <= 0] = 0.02
             gps_vel_stream = np.gradient(gps_pos, axis=0) / dt_grad[:, None]
             is_real_file = True
+            data_status = DataStatus.REAL if has_gps else DataStatus.CALIBRATED
         else:
             t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att, gps_vel_stream = self.synthesize_firefly_flight_data()
+            data_status = DataStatus.SYNTHETIC_FALLBACK
 
         twin = ClosedLoopDigitalTwin(vehicle_id=self.vehicle_id, init_pos_ned=gps_pos[0])
 
@@ -213,9 +224,10 @@ class RealFlightLogValidator:
             att_rmse_deg=att_rmse_deg,
             mean_twin_health=mean_health,
             is_real_vehicle_log=is_real_file,
+            status=data_status,
         )
 
-    def _parse_flight_csv(self, path: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def _parse_flight_csv(self, path: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool]:
         """Parse standard flight log CSV with columns [t, ax, ay, az, gx, gy, gz, x, y, z]."""
         rows = []
         with open(path, "r", encoding="utf-8") as f:
@@ -230,7 +242,12 @@ class RealFlightLogValidator:
         imu_acc = data[:, 1:4]
         imu_gyro = data[:, 4:7]
         gt_pos = data[:, 7:10]
-        gps_pos = gt_pos + np.random.normal(0, 0.10, gt_pos.shape)
+        has_gps = data.shape[1] >= 13
+        if has_gps:
+            gps_pos = data[:, 10:13]
+        else:
+            # Dedicated GPS channel not logged separately; use logged position without synthetic noise injection
+            gps_pos = gt_pos.copy()
 
         dt = np.gradient(t)
         dt[dt <= 0] = 0.02
@@ -239,4 +256,4 @@ class RealFlightLogValidator:
         pitch = -np.arctan2(gt_vel[:, 0], 9.81) * 0.4
         yaw = np.arctan2(gt_vel[:, 1], np.maximum(1e-3, gt_vel[:, 0]))
         gt_att = np.column_stack([roll, pitch, yaw])
-        return t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att
+        return t, imu_acc, imu_gyro, gps_pos, gt_pos, gt_vel, gt_att, has_gps

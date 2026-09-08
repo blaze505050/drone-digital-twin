@@ -1,0 +1,46 @@
+# PROPOSED TEMPLATE. Null means unknown, not zero or nominal.
+schema_version: proposed-1
+dataset_id: null
+status: MISSING # REAL | SYNTHETIC | INVALID | MISSING
+purpose: null # verification / calibration / validation
+source:
+  url_or_instrument_id: null
+  acquired_date: null
+  license_or_permission: null
+  sha256: null
+  original_filename: null
+asset_id: null
+configuration_hash: null
+run_ids: []
+channels:
+  raw_measurements: []
+  onboard_estimates: []
+  applied_actuation: []
+  command_intent: []
+  independent_reference: []
+clock_mapping:
+  reference_clock_id: null
+  offset_drift_method: null
+  uncertainty_s: null
+calibration_ids: []
+frame_transform_version: null
+processing:
+  code_commit: null
+  pipeline_version: null
+  parent_hashes: []
+  seed_if_synthetic: null
+split:
+  grouping_unit: run_id
+  train_run_ids: []
+  tuning_run_ids: []
+  test_run_ids: []
+  locked_before_test_scoring: false
+operating_conditions: {}
+measurement_uncertainty: {}
+known_limitations: []
+exclusion_policy_version: null
+privacy_redactions: []
+validation_policy:
+  require_real_for_experimental_score: true
+  allow_missing_or_invalid_score: false
+  allow_truth_derived_sensor_as_measured: false

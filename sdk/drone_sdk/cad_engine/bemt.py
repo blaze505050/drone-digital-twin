@@ -96,6 +96,8 @@ class BEMTResult:
     dtorque_dr:       np.ndarray   # Sectional torque per unit span (N*m/m)
     inflow_angles:    np.ndarray   # Inflow angle phi (rad)
     aoa_deg:          np.ndarray   # Section angle of attack (deg)
+    converged:        bool = True  # Numerical convergence indicator
+    iterations:       int  = 0     # Max iterations taken across stations
 
     def to_dict(self) -> dict:
         return {
@@ -107,6 +109,7 @@ class BEMTResult:
             "cp": round(self.cp, 5),
             "figure_of_merit": round(self.figure_of_merit, 3),
             "efficiency": round(self.efficiency, 3),
+            "converged": self.converged,
         }
 
 

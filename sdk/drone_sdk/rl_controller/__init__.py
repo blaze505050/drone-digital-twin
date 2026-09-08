@@ -100,6 +100,10 @@ class DomainRandomiser:
         self._cfg = config or DomainRandomConfig()
         self._rng = np.random.default_rng(seed)
 
+    def seed(self, seed: int) -> None:
+        """Seed the separate NumPy random generator."""
+        self._rng = np.random.default_rng(seed)
+
     def sample(self) -> Dict[str, float]:
         """Sample one set of randomised physical parameters."""
         cfg = self._cfg
@@ -210,6 +214,30 @@ class RewardShaper:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Gymnasium-compatible Space Abstractions
+# ─────────────────────────────────────────────────────────────────────────────
+
+class BoxSpace:
+    """Gymnasium-compatible Box space interface for standalone portability."""
+
+    def __init__(self, low: np.ndarray, high: np.ndarray, shape: Optional[Tuple[int, ...]] = None, dtype=np.float32) -> None:
+        self.low = np.array(low, dtype=dtype)
+        self.high = np.array(high, dtype=dtype)
+        self.shape = self.low.shape if shape is None else shape
+        self.dtype = dtype
+
+    def sample(self) -> np.ndarray:
+        # Avoid inf bounds in sample
+        low = np.where(np.isneginf(self.low), -1e3, self.low)
+        high = np.where(np.isposinf(self.high), 1e3, self.high)
+        return np.random.uniform(low, high).astype(self.dtype)
+
+    def contains(self, x: Any) -> bool:
+        arr = np.asarray(x)
+        return bool(arr.shape == self.shape and np.all(arr >= self.low) and np.all(arr <= self.high))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Drone Gym Environment (Gymnasium-compatible)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -272,12 +300,20 @@ class DroneGymEnv:
         self._prop_radius = 0.127        # 5-inch prop radius
         self._i_rotor = 1.5e-5           # Rotor polar inertia (kg*m^2)
 
-        # Spaces (defined without gymnasium dependency for portability)
-        obs_high = np.full(self._cfg.obs_dim, np.inf)
+        # Spaces
+        obs_high = np.full(self._cfg.obs_dim, np.inf, dtype=np.float32)
         self._obs_low  = -obs_high
         self._obs_high =  obs_high
-        self._act_low  = np.zeros(self._cfg.act_dim)
-        self._act_high = np.ones(self._cfg.act_dim)
+        self._act_low  = np.zeros(self._cfg.act_dim, dtype=np.float32)
+        self._act_high = np.ones(self._cfg.act_dim, dtype=np.float32)
+
+        try:
+            import gymnasium as gym
+            self.observation_space = gym.spaces.Box(self._obs_low, self._obs_high, dtype=np.float32)
+            self.action_space = gym.spaces.Box(self._act_low, self._act_high, dtype=np.float32)
+        except ImportError:
+            self.observation_space = BoxSpace(self._obs_low, self._obs_high, dtype=np.float32)
+            self.action_space = BoxSpace(self._act_low, self._act_high, dtype=np.float32)
 
     # ── Gymnasium API ─────────────────────────────────────────────────────────
 
@@ -289,6 +325,8 @@ class DroneGymEnv:
         """Reset to a new episode."""
         if seed is not None:
             np.random.seed(seed)
+            if hasattr(self._rand, "seed"):
+                self._rand.seed(seed)
 
         # Randomise physics
         self._physics_params = self._rand.sample()
@@ -380,9 +418,15 @@ class DroneGymEnv:
         m = base_m * self._physics_params.get("mass_scale", 1.0)
         I = inertia_diag * self._physics_params.get("inertia_scale", 1.0)
 
-        # Target commanded thrust per motor
-        max_thrust_per_motor = m * g * 0.45
-        target_thrusts = action * max_thrust_per_motor
+        # Actuator command with independent per-motor scaling and mass-independent motor limits
+        motor_scales = np.array([
+            self._physics_params.get("motor_scale_1", 1.0),
+            self._physics_params.get("motor_scale_2", 1.0),
+            self._physics_params.get("motor_scale_3", 1.0),
+            self._physics_params.get("motor_scale_4", 1.0),
+        ])
+        base_max_thrust = 6.62
+        target_thrusts = action * (base_max_thrust * motor_scales)
 
         # Substep physics loop
         for _ in range(cfg.sim_steps_per_ctrl):
@@ -391,7 +435,7 @@ class DroneGymEnv:
             self._motor_thrust += (target_thrusts - self._motor_thrust) * alpha_motor
             thrusts = self._motor_thrust.copy()
 
-            # 2. Ground effect augmentation near surface
+            # 2. Ground effect augmentation near surface (NED: alt_agl = -pos[2])
             alt_agl = max(0.01, -self._pos[2])
             if alt_agl < 2.0 * (2.0 * self._prop_radius):
                 r_over_z = self._prop_radius / (4.0 * max(alt_agl, self._prop_radius))
@@ -406,7 +450,6 @@ class DroneGymEnv:
             tau_yaw   = (thrusts[0] + thrusts[3] - thrusts[1] - thrusts[2]) * 0.01
 
             # 4. Rotor gyroscopic reaction torque (counter-rotating pairs)
-            # Motor 0,2: CW (+Z), Motor 1,3: CCW (-Z)
             omega_rotor = np.sqrt(np.maximum(thrusts, 0.0) / 1.5e-5)
             net_rotor_h = self._i_rotor * (omega_rotor[0] + omega_rotor[2] - omega_rotor[1] - omega_rotor[3])
             tau_gyro = np.array([
@@ -415,26 +458,32 @@ class DroneGymEnv:
                  0.0,
             ])
 
-            # 5. Quaternion body-to-world rotation
+            # 5. Quaternion body-to-world rotation (NED frame: thrust acts along -z)
             q0, q1, q2, q3 = self._quat
-            # Thrust in NED frame (up is -z in NED)
             thrust_world = np.array([
-                2.0 * (q1*q3 - q0*q2) * F_total,
-                2.0 * (q2*q3 + q0*q1) * F_total,
-                (q0*q0 - q1*q1 - q2*q2 + q3*q3) * F_total,
+                -2.0 * (q1*q3 + q0*q2) * F_total,
+                -2.0 * (q2*q3 - q0*q1) * F_total,
+                -(q0*q0 - q1*q1 - q2*q2 + q3*q3) * F_total,
             ])
 
-            # 6. Quadratic aerodynamic translational drag
-            drag_world = -0.5 * rho * self._cd_flat_plate * self._frontal_area * self._vel * np.abs(self._vel)
+            # 6. Quadratic aerodynamic translational drag with randomized wind and drag scale
+            drag_scale = self._physics_params.get("drag_scale", 1.0)
+            wind_speed = self._physics_params.get("wind_speed_ms", 0.0)
+            wind_dir = self._physics_params.get("wind_dir_rad", 0.0)
+            v_wind = np.array([wind_speed * math.cos(wind_dir), wind_speed * math.sin(wind_dir), 0.0])
+            v_rel = self._vel - v_wind
 
-            # 7. Translational acceleration
-            acc_world = (thrust_world + drag_world) / m + np.array([0.0, 0.0, -g])
+            drag_world = -0.5 * rho * (self._cd_flat_plate * drag_scale) * self._frontal_area * v_rel * np.abs(v_rel)
+
+            # 7. Translational acceleration (NED frame: +z down, gravity g_ned = [0, 0, +g])
+            acc_world = (thrust_world + drag_world) / m + np.array([0.0, 0.0, g])
             self._vel += acc_world * dt
             self._pos += self._vel * dt
 
-            # 8. Angular dynamics
+            # 8. Angular dynamics via Euler equations
             total_torques = np.array([tau_roll, tau_pitch, tau_yaw]) + tau_gyro
-            self._omega += (total_torques / I) * dt
+            gyro_moment = np.cross(self._omega, I * self._omega)
+            self._omega += ((total_torques - gyro_moment) / I) * dt
 
             # 9. Quaternion integration
             wx, wy, wz = self._omega

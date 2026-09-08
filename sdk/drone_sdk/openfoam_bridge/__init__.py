@@ -582,7 +582,16 @@ meshQualityControls
 
     def _write_field(self, path: Path, foam_class: str, obj: str,
                      body: str) -> Path:
-        content = self.foam_header(foam_class, "0", obj) + f"\ndimensions [0 2 -2 0 0 0 0];\n\n{body}\n"
+        # Standard OpenFOAM SI dimensions: [mass length time temperature moles current luminous_intensity]
+        dim_map = {
+            "U":     "[0 1 -1 0 0 0 0]",   # m/s
+            "p":     "[0 2 -2 0 0 0 0]",   # m^2/s^2 (kinematic pressure in incompressible simpleFoam)
+            "k":     "[0 2 -2 0 0 0 0]",   # m^2/s^2 (turbulent kinetic energy)
+            "omega": "[0 0 -1 0 0 0 0]",   # 1/s (specific dissipation rate)
+            "nut":   "[0 2 -1 0 0 0 0]",   # m^2/s (turbulent eddy viscosity)
+        }
+        dims = dim_map.get(obj, "[0 2 -2 0 0 0 0]")
+        content = self.foam_header(foam_class, "0", obj) + f"\ndimensions {dims};\n\n{body}\n"
         path.write_text(content)
         return path
 

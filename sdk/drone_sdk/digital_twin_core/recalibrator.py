@@ -48,10 +48,12 @@ class OnlineRecalibrator:
         recal_interval_frames: int = 30,
         nominal_mass_kg: Optional[float] = None,
         nominal_max_thrust_n: Optional[float] = None,
+        enable_auto_apply: bool = False,
     ) -> None:
         self.twin_model = twin_model
         self.window_size = window_size
         self.recal_interval = recal_interval_frames
+        self.enable_auto_apply = enable_auto_apply
 
         if twin_model is not None and hasattr(twin_model, "params"):
             self.nominal_mass = float(twin_model.params.mass_kg)
@@ -78,13 +80,23 @@ class OnlineRecalibrator:
     ) -> bool:
         """Record one timestep of commanded input and resulting motion.
 
+        Transforms body specific force into world NED linear acceleration.
         Returns True if a recalibration optimization was executed during this step.
         """
+        q0, q1, q2, q3 = actual_state.q0, actual_state.q1, actual_state.q2, actual_state.q3
+        R_nb = np.array([
+            [1.0 - 2.0*(q2*q2 + q3*q3), 2.0*(q1*q2 - q0*q3),       2.0*(q1*q3 + q0*q2)],
+            [2.0*(q1*q2 + q0*q3),       1.0 - 2.0*(q1*q1 + q3*q3), 2.0*(q2*q3 - q0*q1)],
+            [2.0*(q1*q3 - q0*q2),       2.0*(q2*q3 + q0*q1),       1.0 - 2.0*(q1*q1 + q2*q2)],
+        ])
+        f_b = np.array([actual_state.ax, actual_state.ay, actual_state.az], dtype=np.float64)
+        acc_ned = R_nb @ f_b + np.array([0.0, 0.0, 9.81], dtype=np.float64)
+
         rec = RecalibrationRecord(
             timestamp=time.time(),
             action=np.array(action, dtype=np.float64),
             vel_actual=np.array([actual_state.vx, actual_state.vy, actual_state.vz], dtype=np.float64),
-            acc_actual=np.array([actual_state.ax, actual_state.ay, actual_state.az], dtype=np.float64),
+            acc_actual=acc_ned,
         )
         self._buffer.append(rec)
         self._frame_count += 1
@@ -104,28 +116,34 @@ class OnlineRecalibrator:
         vels    = np.array([r.vel_actual for r in self._buffer])
         accs    = np.array([r.acc_actual for r in self._buffer])
 
-        # Vertical balance: m * (az + g) = F_thrust_z - Drag_z
+        # Vertical balance in NED:
+        # a_z = g - (F_thrust_z / m) - (F_drag_z / m)
+        # Note: thrust acts along -z, opposing gravity (+z).
         cmd_sum = np.sum(actions, axis=1)  # (N,)
-        vert_acc = accs[:, 2] + 9.81       # (N,)
+        vert_acc = accs[:, 2]              # (N,) NED vertical acceleration
         vert_vel = vels[:, 2]
 
-        # Fit thrust scale and mass scale via linear regression on z dynamics
-        # a_z + g = (thrust_scale / mass) * cmd_sum - (drag / mass) * vz * |vz|
+        # Excitation check: require non-trivial command variation to avoid rank deficiency
+        if np.var(cmd_sum) < 1e-4:
+            self._recal_count += 1
+            return self._last_calibrated_scales
+
+        # Linear regression on vertical dynamics:
+        # F_net_z / m = acc_z - 9.81 = - (4 * max_thrust / mass) * (cmd_sum / 4) + drag_term
+        delta_az = vert_acc - 9.81
         A = np.column_stack([
-            cmd_sum,
-            -vert_vel * np.abs(vert_vel),
+            -0.25 * cmd_sum,
+            vert_vel * np.abs(vert_vel),
         ])
 
         try:
-            # Least squares solution: [k_thrust_over_m, k_drag_over_m]
-            coeffs, _, _, _ = np.linalg.lstsq(A, vert_acc, rcond=None)
+            coeffs, _, _, _ = np.linalg.lstsq(A, delta_az, rcond=None)
             k_t_m = float(coeffs[0])
-            k_d_m = float(coeffs[1])
 
-            # Extract scale factors relative to configured nominal parameters
             nominal_mass = self.twin_model.params.mass_kg if self.twin_model is not None else self.nominal_mass
             nominal_thrust = self.twin_model.params.max_thrust_motor_n if self.twin_model is not None else self.nominal_thrust
             nominal_k_t_m = (4.0 * nominal_thrust) / max(1e-3, nominal_mass)
+
             if k_t_m > 5.0 and k_t_m < 35.0:
                 thrust_scale = float(k_t_m / nominal_k_t_m)
             else:
@@ -134,7 +152,6 @@ class OnlineRecalibrator:
             # Horizontal drag fit from x and y dynamics
             horiz_vel_sq = vels[:, 0:2] * np.abs(vels[:, 0:2])
             horiz_acc = accs[:, 0:2]
-            # Simple correlation to drag scale
             drag_scale = 1.0
             if np.mean(np.abs(horiz_vel_sq)) > 1e-3:
                 drag_est = -np.mean(horiz_acc * np.sign(vels[:, 0:2]))
@@ -144,7 +161,8 @@ class OnlineRecalibrator:
             # Bound scales to realistic physical envelopes
             thrust_scale = float(np.clip(thrust_scale, 0.75, 1.25))
             drag_scale = float(np.clip(drag_scale, 0.70, 1.35))
-            mass_scale = float(np.clip(1.0 / max(0.5, thrust_scale), 0.80, 1.20))
+            # Hold mass prior constant unless independently measured
+            mass_scale = 1.0
 
         except Exception:
             thrust_scale = 1.0
@@ -163,8 +181,8 @@ class OnlineRecalibrator:
             (1.0 - alpha) * self._last_calibrated_scales["mass_scale"] + alpha * mass_scale
         )
 
-        # Apply to twin model
-        if hasattr(self.twin_model, "params"):
+        # Apply to twin model ONLY if explicitly authorized
+        if self.enable_auto_apply and hasattr(self.twin_model, "params"):
             p = getattr(self.twin_model, "params")
             p.mass_kg = self.nominal_mass * self._last_calibrated_scales["mass_scale"]
             p.max_thrust_motor_n = self.nominal_thrust * self._last_calibrated_scales["thrust_scale"]

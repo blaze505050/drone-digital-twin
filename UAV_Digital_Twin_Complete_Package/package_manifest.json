@@ -1,0 +1,25 @@
+{
+  "documents": [
+    "00_START_HERE.md",
+    "05_SOURCE_BACKED_REPO_AUDIT.md",
+    "01_REVISED_PRD.md",
+    "02_ARCHITECTURE_AND_ICD.md",
+    "03_VERIFICATION_VALIDATION_PLAN.md",
+    "04_IMPLEMENTATION_BACKLOG.md",
+    "06_RESEARCH_AND_PORTFOLIO.md",
+    "07_REFERENCES.md"
+  ],
+  "requirements": 30,
+  "backlog_items": 30,
+  "pages": 42,
+  "words": 14441,
+  "pdf_bytes": 206920,
+  "source_commit": "4d5b8d3fbe84c0bb2d97fb93bde45cf7f1abf9c4",
+  "review_method": "static source review; no repo tests or hardware executed",
+  "checks": {
+    "has_final_reference": true,
+    "has_B30": true,
+    "has_V13": true,
+    "has_CFG01": true
+  }
+}

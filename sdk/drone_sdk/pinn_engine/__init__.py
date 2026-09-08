@@ -43,6 +43,11 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from .surrogate_benchmark import (
+    SurrogateComparisonBenchmark,
+    SurrogatePerformance,
+)
+
 logger = logging.getLogger(__name__)
 
 # Optional PyTorch import

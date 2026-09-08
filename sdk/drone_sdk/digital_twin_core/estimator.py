@@ -221,29 +221,70 @@ class MultiplicativeEKF:
         R_cov = np.array([[cov_alt]])
         self._apply_kalman_update(H, y, R_cov)
 
-    def update_magnetometer(self, mag_body: np.ndarray, declination_rad: float = 0.0, cov_mag: float = 0.08) -> None:
-        """Correct heading with calibrated 3-axis magnetometer."""
-        mag_norm = np.linalg.norm(mag_body)
+    def update_magnetometer(
+        self,
+        mag_body: np.ndarray,
+        declination_rad: float = 0.0,
+        cov_mag: float = 0.05,
+        mag_ned_ref: Optional[np.ndarray] = None,
+    ) -> None:
+        """Correct attitude and heading using 3-axis magnetometer vector observation model.
+
+        Fuses 3D calibrated magnetometer vector measurements directly against the navigation-frame
+        geomagnetic reference vector, avoiding Euler-angle leveling singularities and properly
+        accounting for magnetic inclination (dip angle) and vehicle roll/pitch attitudes.
+
+        Parameters
+        ----------
+        mag_body : np.ndarray
+            Calibrated 3-axis magnetic field vector in the body frame [m_x, m_y, m_z].
+        declination_rad : float, default 0.0
+            Magnetic declination angle in radians (East positive).
+        cov_mag : float, default 0.05
+            Magnetometer measurement noise variance (rad^2 / normalized field variance).
+        mag_ned_ref : Optional[np.ndarray], default None
+            Calibrated reference magnetic field vector in the NED navigation frame.
+            If None, defaults to unit horizontal vector oriented along magnetic North:
+            [cos(declination_rad), sin(declination_rad), 0.0].
+        """
+        mag_arr = np.asarray(mag_body, dtype=np.float64)
+        if not np.all(np.isfinite(mag_arr)):
+            return
+
+        mag_norm = float(np.linalg.norm(mag_arr))
         if mag_norm < 1e-4:
             return
 
+        # Normalized body magnetic measurement
+        mb = mag_arr / mag_norm
+
+        # Reference magnetic vector in NED navigation frame
+        if mag_ned_ref is not None:
+            ref_arr = np.asarray(mag_ned_ref, dtype=np.float64)
+            ref_norm = float(np.linalg.norm(ref_arr))
+            if ref_norm > 1e-4 and np.all(np.isfinite(ref_arr)):
+                ref_n = ref_arr / ref_norm
+            else:
+                ref_n = np.array([math.cos(declination_rad), math.sin(declination_rad), 0.0], dtype=np.float64)
+        else:
+            ref_n = np.array([math.cos(declination_rad), math.sin(declination_rad), 0.0], dtype=np.float64)
+
+        # Predict body-frame magnetic observation using current attitude: m_b_pred = R(q)^T @ ref_n
         R = self._quat_to_rot()
-        # Rotate magnetic field to world frame
-        mag_ned = R @ (mag_body / mag_norm)
-        # Measured yaw relative to magnetic North
-        meas_yaw = math.atan2(mag_ned[1], mag_ned[0]) + declination_rad
+        mb_pred = R.T @ ref_n
 
-        # Current estimated yaw
-        q0, q1, q2, q3 = self.q
-        est_yaw = math.atan2(2.0*(q1*q2 + q0*q3), 1.0 - 2.0*(q2*q2 + q3*q3))
+        # Measurement innovation in body frame: y = mb - mb_pred
+        y = mb - mb_pred
 
-        yaw_err = math.atan2(math.sin(meas_yaw - est_yaw), math.cos(meas_yaw - est_yaw))
-        y = np.array([yaw_err])
+        # Measurement Jacobian H (3x15):
+        # The perturbation on R^T is: (R(q (x) dq))^T @ ref_n ≈ mb_pred + [mb_pred]_x @ d_theta
+        # Hence: d(mb_pred)/d(d_theta) = -[mb_pred]_x
+        # And innovation residual y = mb - mb_pred ≈ [mb_pred]_x @ d_theta
+        # Therefore: H[:, 6:9] = [mb_pred]_x
+        H = np.zeros((3, 15), dtype=np.float64)
+        H[:, 6:9] = self._skew_symmetric(mb_pred)
 
-        H = np.zeros((1, 15))
-        H[0, 8] = 1.0  # yaw error state
-
-        R_cov = np.array([[cov_mag]])
+        R_cov = np.eye(3, dtype=np.float64) * cov_mag
         self._apply_kalman_update(H, y, R_cov)
 
     def _apply_kalman_update(self, H: np.ndarray, y: np.ndarray, R_cov: np.ndarray) -> None:

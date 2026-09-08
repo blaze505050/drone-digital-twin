@@ -27,6 +27,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from drone_sdk.contracts.data_status import DataStatus
+
 
 @dataclass
 class NASACycleRecord:
@@ -40,6 +42,7 @@ class NASACycleRecord:
     voltage_v: np.ndarray          # Terminal voltage (V)
     current_a: np.ndarray          # Discharge current (A, positive discharge)
     temperature_c: np.ndarray      # Cell surface temperature (°C)
+    status: DataStatus = DataStatus.SYNTHETIC_FALLBACK
 
 
 class NASABatteryDatasetAdapter:
@@ -66,15 +69,17 @@ class NASABatteryDatasetAdapter:
         """Load from .mat/JSON file if available, or generate verified benchmark data."""
         if self.data_path and self.data_path.exists():
             if self.data_path.suffix.lower() == ".mat":
-                self._load_from_mat(self.data_path)
-                self.is_synthetic_fallback = False
-                return
+                success = self._load_from_mat(self.data_path)
+                if success and self._cycles:
+                    self.is_synthetic_fallback = False
+                    return
             elif self.data_path.suffix.lower() in (".json", ".txt"):
-                self._load_from_json(self.data_path)
-                self.is_synthetic_fallback = False
-                return
+                success = self._load_from_json(self.data_path)
+                if success and self._cycles:
+                    self.is_synthetic_fallback = False
+                    return
 
-        # Generate standard NASA Ames B0005 empirical aging dataset
+        # Explicit synthetic fallback
         self.is_synthetic_fallback = True
         self._cycles = self._generate_b0005_benchmark()
 
@@ -119,35 +124,43 @@ class NASABatteryDatasetAdapter:
                     voltage_v=voltage,
                     current_a=current,
                     temperature_c=temp,
+                    status=DataStatus.REAL,
                 )
                 records.append(rec)
 
             if records:
                 self._cycles = records
-                return
+                return True
         except Exception:
             pass  # Fall back to high-fidelity benchmark synthesis
 
-        self._cycles = self._generate_b0005_benchmark()
+        return False
 
-    def _load_from_json(self, path: Path) -> None:
+    def _load_from_json(self, path: Path) -> bool:
         """Parse exported JSON cycle summary."""
-        data = json.loads(path.read_text(encoding="utf-8"))
-        records = []
-        for d in data.get("cycles", []):
-            rec = NASACycleRecord(
-                cycle_index=int(d["cycle_index"]),
-                ambient_temp_c=float(d.get("ambient_temp_c", 24.0)),
-                duration_s=float(d.get("duration_s", 3200.0)),
-                capacity_ah=float(d["capacity_ah"]),
-                soh=float(d.get("soh", d["capacity_ah"] / self.NOMINAL_CAPACITY_AH)),
-                time_s=np.array(d.get("time_s", [0.0, 3200.0])),
-                voltage_v=np.array(d.get("voltage_v", [4.2, 2.7])),
-                current_a=np.array(d.get("current_a", [2.0, 2.0])),
-                temperature_c=np.array(d.get("temperature_c", [24.0, 32.0])),
-            )
-            records.append(rec)
-        self._cycles = records or self._generate_b0005_benchmark()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            records = []
+            for d in data.get("cycles", []):
+                rec = NASACycleRecord(
+                    cycle_index=int(d["cycle_index"]),
+                    ambient_temp_c=float(d.get("ambient_temp_c", 24.0)),
+                    duration_s=float(d.get("duration_s", 3200.0)),
+                    capacity_ah=float(d["capacity_ah"]),
+                    soh=float(d.get("soh", d["capacity_ah"] / self.NOMINAL_CAPACITY_AH)),
+                    time_s=np.array(d.get("time_s", [0.0, 3200.0])),
+                    voltage_v=np.array(d.get("voltage_v", [4.2, 2.7])),
+                    current_a=np.array(d.get("current_a", [2.0, 2.0])),
+                    temperature_c=np.array(d.get("temperature_c", [24.0, 32.0])),
+                    status=DataStatus.REAL,
+                )
+                records.append(rec)
+            if records:
+                self._cycles = records
+                return True
+        except Exception:
+            pass
+        return False
 
     def _generate_b0005_benchmark(self) -> List[NASACycleRecord]:
         """Generate verified NASA B0005 aging trajectory.
@@ -201,6 +214,7 @@ class NASABatteryDatasetAdapter:
                 voltage_v=voltage,
                 current_a=current,
                 temperature_c=temp,
+                status=DataStatus.SYNTHETIC_FALLBACK,
             )
             records.append(rec)
 
@@ -209,6 +223,11 @@ class NASABatteryDatasetAdapter:
     @property
     def total_cycles(self) -> int:
         return len(self._cycles)
+
+    @property
+    def data_status(self) -> DataStatus:
+        """Explicit data provenance for this dataset instance."""
+        return DataStatus.REAL if not self.is_synthetic_fallback else DataStatus.SYNTHETIC_FALLBACK
 
     def get_cycle(self, cycle_index: int) -> NASACycleRecord:
         """Retrieve telemetry for a specific 1-indexed cycle."""
@@ -256,7 +275,12 @@ class NASABatteryDatasetAdapter:
         for current in rec.current_a:
             if hasattr(ecm_model, "step"):
                 state = ecm_model.step(current=float(current), dt=dt, temperature_c=rec.ambient_temp_c)
-                v_pred.append(getattr(state, "terminal_voltage", 3.7))
+                v_val = getattr(state, "v_terminal", getattr(state, "terminal_voltage", 3.7))
+                # If evaluating a pack model against a single-cell NASA record, scale by series cell count
+                n_series = getattr(getattr(ecm_model, "_cell", None), "n_cells_series", 1)
+                if n_series > 1 and v_val > 5.0:
+                    v_val = v_val / n_series
+                v_pred.append(float(v_val))
             else:
                 v_pred.append(3.7)
 
@@ -274,4 +298,9 @@ class NASABatteryDatasetAdapter:
             "duration_s": rec.duration_s,
             "final_voltage_true": round(float(v_true[-1]), 3),
             "final_voltage_sim": round(float(v_sim[-1]), 3),
+            "data_status": self.data_status.value,
+            "is_empirical": self.data_status.is_empirical,
         }
+
+    # Backward-compatibility alias
+    validate_ecm_against_cycle = validate_ecm

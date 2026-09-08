@@ -2,8 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue" />
-  <img src="https://img.shields.io/badge/Tests-1000%2B%20passing-brightgreen" />
+  <img src="https://img.shields.io/badge/Tests-1011%20passing-brightgreen" />
   <img src="https://img.shields.io/badge/Modules-28-orange" />
+  <img src="https://img.shields.io/badge/Status-Alpha%20(Research%20Prototype)-blueviolet" />
   <img src="https://img.shields.io/badge/License-MIT-lightgrey" />
   <img src="https://img.shields.io/badge/Architecture-Closed--Loop%20Twin-purple" />
 </p>
@@ -19,6 +20,8 @@ flight computer protocols, 3D computer vision, and sim-to-real autonomy:
 - **Prognostics & Health**: NASA battery degradation dataset (B0005) calibration, Thevenin ECM, finite element structural modal analysis, and autoencoder predictive maintenance.
 - **Flight Autonomy & Sim-to-Real**: Pluggable Command Sinks (Gazebo SITL and MAVLink hardware), YOLO vision perception bridge for GPS-denied relative navigation, and Gymnasium RL flight controller.
 - **Defense & Swarm**: Multi-UAV swarm formation control under electronic warfare (GPS jamming and RF degradation).
+
+> **Evidence & Validation Policy**: See [docs/claims.md](docs/claims.md) for the complete Platform Claims & Evidence Matrix delineating analytically verified, empirically validated, and simulation-tested capabilities.
 
 ---
 
@@ -77,13 +80,15 @@ python examples/full_platform_demo.py
 Expected output:
 ```text
 =================================================================
-  ✓ All 26 platform modules verified successfully.
+  ✓ All 28 platform modules verified successfully.
   ✓ StateStore: data flow confirmed end-to-end.
   ✓ Closed-Loop Digital Twin: bidirectional synchronization active.
+  ✓ NASA F' SITL Bridge: wire framing & channelization verified.
+  ✓ Glob3R 3D Engine: vision-to-pseudo-LiDAR mapping confirmed.
   ✓ Zero import errors. Zero runtime exceptions.
 =================================================================
 
-Platform Status: PRODUCTION READY — ADVANCED DIGITAL TWIN ACTIVE
+Platform Status: ALL 28 SUBSYSTEMS VERIFIED IN SIMULATION (SIM-TO-REAL READY)
 =================================================================
 ```
 
@@ -91,7 +96,7 @@ Platform Status: PRODUCTION READY — ADVANCED DIGITAL TWIN ACTIVE
 
 ```bash
 python -m pytest tests/ -v
-# 990+ tests, 0 failures
+# 1010+ tests, 0 failures
 ```
 
 ### 4. Optional dependencies
@@ -324,6 +329,26 @@ drone-digital-twin/
 ├── LICENSE                         # MIT License
 └── README.md
 ```
+
+## Verification & Evidence
+
+The platform separates verification levels across all subsystems:
+
+- **Empirically Validated**: Battery Equivalent Circuit Model (ECM) and SEI degradation curves calibrated directly to NASA Ames Li-ion 18650 experimental data (B0005, 168 discharge cycles).
+- **Analytically Verified**: 6-DOF Euler dynamic equations with full 3×3 inertia tensor, NED gravity formulation, BEMT propeller aerodynamics with Prandtl losses, and Euler-Bernoulli structural modal analysis.
+- **Simulation-Verified**: 15-state Multiplicative EKF (MEKF) with quaternion kinematics, divergence monitoring, RL 6-DOF flight control, Glob3R geometric 3D vision, and multi-agent swarm EW resilience.
+- **Clean-Room Protocol Bridges**: NASA F' SITL/HIL wire protocol framing (`0x5A5A5A5A` sync, CRC32, channelized telemetry) and MAVLink v1/v2 packet deserialization.
+
+For a full subsystem-by-subsystem evidence breakdown, refer to [docs/claims.md](docs/claims.md).
+
+---
+
+## Known Limitations & Operational Scope
+
+1. **Hardware-In-The-Loop**: HIL execution requires a physically connected Pixhawk or compatible flight controller over serial UART/USB.
+2. **CFD Solvers**: The OpenFOAM bridge generates complete case directories; running full 3D RANS/LES requires an installed `openfoam` environment.
+3. **Magnetometer Reference**: The EKF magnetometer observation model assumes a calibrated local geomagnetic reference vector; soft/hard iron field distortion calibration is required for custom airframes.
+4. **Flight Log Replay**: State estimation benchmarks fall back to synthetic trajectories when raw EuRoC or Zurich Urban flight logs are not downloaded locally.
 
 ---
 

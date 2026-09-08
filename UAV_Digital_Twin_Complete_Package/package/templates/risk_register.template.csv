@@ -1,0 +1,7 @@
+risk_id,hazard_or_risk,affected_requirement,likelihood,severity,mitigation,verification_evidence,owner,status,residual_risk_acceptance
+R01,Rotating propeller or restrained-bench failure,SAF-01,TBD,TBD,Qualified review and rated guarding restraint and exclusion zone,TBD,TBD,OPEN,TBD
+R02,Battery electrical or thermal incident,ENG-01,TBD,TBD,OEM limits suitable instrumentation and supervised procedures,TBD,TBD,OPEN,TBD
+R03,Synthetic or leaked truth presented as physical evidence,DAT-01,TBD,TBD,Provenance firewall and separated channels,V00,TBD,OPEN,TBD
+R04,Non-identifiable parameter update,ID-01,TBD,TBD,Measured priors excitation gate and shadow promotion,V06,TBD,OPEN,TBD
+R05,Stale or wrong-vehicle command,SAF-02,TBD,TBD,Default read-only and freshness identity mode gateway,V13,TBD,OPEN,TBD
+R06,Uncertainty or domain misrepresentation,UQ-01,TBD,TBD,Holdout coverage domain labels and unknown state,V10 and V11,TBD,OPEN,TBD

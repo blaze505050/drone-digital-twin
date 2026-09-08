@@ -1,0 +1,22 @@
+{
+  "package/00_START_HERE.md": "5a6a8a5add980e28e98401daffc7ac58991dac1c75174ec613143213fba3f005",
+  "package/01_REVISED_PRD.md": "dfe77c54349934a4edaa5a01ead0d24b393a60f12ffddb545353b09ec4ec696f",
+  "package/02_ARCHITECTURE_AND_ICD.md": "3e132c213c346557eb2eb21e9b02d3bd7479d901e3d6feee686c9e4520bb2a39",
+  "package/03_VERIFICATION_VALIDATION_PLAN.md": "3002cb9864ec2e0990c7ef65e98854fbdaae744396c27be44c36840941e43320",
+  "package/04_IMPLEMENTATION_BACKLOG.md": "27bbccee926a9a6726a1fca05341822f87f3cb331bfc8bd61d8de21d50830a12",
+  "package/05_SOURCE_BACKED_REPO_AUDIT.md": "e202f9d2d0f28616599d244530ce10cbf5bb23013fdccb4df166923514331363",
+  "package/06_RESEARCH_AND_PORTFOLIO.md": "fa5bc4398ed2129a65a8b67dff68ed7ad75bf8a6cf5b7e52ac5fbf2cdc3fee64",
+  "package/07_REFERENCES.md": "a435683ffd8e24fbd8c1d767bfd08bb93741c8972cf41ee996f77864ec8256d5",
+  "package/implementation_tracker.csv": "44262063b156689b36ca91f51c3cb913c8471491715530c3eb79b935f167493b",
+  "package/requirements_tracker.csv": "a3c076f8c7e4df2292a43f43402666c63b29e51026474bf115c7e55927f26037",
+  "package/templates/dataset.template.yaml": "734c6960ca9b3c89ee689bd8e5b15d1145dffb215404dbbad27eac1a0c27e995",
+  "package/templates/engineering_issue.template.md": "3ff42f9c313824f3566117e6359cc08927f3d7978a08eea96e608f3f2b6734c9",
+  "package/templates/model_card.template.md": "7ab78989d0370a623250664300c8bcdda481f273a57bbb54cfa4fa43a4f8290c",
+  "package/templates/risk_register.template.csv": "8f719de21bee5382302db08d0b4b47d81604f21c7c13636808c2842afcf56fa8",
+  "package/templates/test_card.template.md": "c862b0c8da4df81fcc46b17ecc0cf7a1046e2a7f8a44d473eac56eb3f545525e",
+  "package/templates/vehicle.template.yaml": "5d0bac986e38c1d08266932062d20b70d9164b328c01b2c183bb0a9bd42a951b",
+  "UAV_Digital_Twin_Engineering_Package.pdf": "61fa40edbf525e117e7e12d6ee1fe607a25ec45d1deb92c84ab50d11b86e65e3",
+  "UAV_Digital_Twin_Engineering_Package.docx": "8ca2f35af34a6b467755219c1d49e17d9bfd833b281316045e1d9b041035b7c7",
+  "UAV_Digital_Twin_Engineering_Package.md": "a0784763126793fa5f6373b6741ec6c7401d214a4cde1d55feb0664d43da8ffd",
+  "package_manifest.json": "58d3a8bd5cd8942a3c76630403ad7c6e53d328422ac3b6efae42c58ccf76e24e"
+}

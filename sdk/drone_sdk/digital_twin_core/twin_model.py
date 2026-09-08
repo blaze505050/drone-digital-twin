@@ -39,6 +39,9 @@ class TwinPhysicsParameters:
     ixx:               float = 0.035
     iyy:               float = 0.046
     izz:               float = 0.098
+    ixy:               float = 0.0
+    ixz:               float = 0.0
+    iyz:               float = 0.0
     motor_tau_s:       float = 0.035
     cd_translational:  float = 1.05
     frontal_area_m2:   float = 0.025
@@ -47,6 +50,15 @@ class TwinPhysicsParameters:
     prop_radius_m:     float = 0.127
     motor_thrust_coeff: float = 1.5e-5
     motor_torque_coeff: float = 0.015
+
+    @property
+    def inertia_tensor(self) -> np.ndarray:
+        """Full 3x3 symmetric inertia tensor."""
+        return np.array([
+            [self.ixx, self.ixy, self.ixz],
+            [self.ixy, self.iyy, self.iyz],
+            [self.ixz, self.iyz, self.izz],
+        ], dtype=np.float64)
 
 
 class DynamicTwinModel:
@@ -76,6 +88,36 @@ class DynamicTwinModel:
 
         self._seq = 0
         self._last_cmd = np.zeros(4)
+
+    @classmethod
+    def from_vehicle_config(cls, config: Any) -> DynamicTwinModel:
+        """Construct a DynamicTwinModel directly from a VehicleConfiguration asset."""
+        mass = config.compute_total_mass()
+        I = config.compute_total_inertia_tensor()
+        arm = config.airframe.wheelbase_m / 2.0 if hasattr(config, "airframe") else 0.25
+        
+        # Max thrust per motor from battery max voltage and prop static ct0
+        v_max = config.battery.max_pack_voltage if hasattr(config, "battery") else 16.8
+        rpm_max = config.motors[0].kv * v_max if config.motors else 880.0 * 16.8
+        d_prop = config.propellers[0].diameter_m if config.propellers else 0.254
+        ct0 = config.propellers[0].ct0 if config.propellers else 0.112
+        n_max = rpm_max / 60.0
+        max_thrust = ct0 * 1.225 * (n_max ** 2) * (d_prop ** 4)
+
+        params = TwinPhysicsParameters(
+            mass_kg=mass,
+            arm_length_m=arm,
+            ixx=float(I[0, 0]),
+            iyy=float(I[1, 1]),
+            izz=float(I[2, 2]),
+            ixy=float(I[0, 1]),
+            ixz=float(I[0, 2]),
+            iyz=float(I[1, 2]),
+            max_thrust_motor_n=max_thrust,
+            motor_tau_s=config.motors[0].tau_m if config.motors else 0.035,
+            prop_radius_m=d_prop / 2.0,
+        )
+        return cls(vehicle_id=config.asset_id, params=params)
 
     def seed_from_state(self, state: DroneStateVector) -> None:
         """Seed twin internal states to match a measured or estimated baseline state."""
@@ -112,6 +154,7 @@ class DynamicTwinModel:
         action = np.clip(cmd_action, 0.0, 1.0)
         p = self.params
         g = 9.81
+        g_ned = np.array([0.0, 0.0, g], dtype=np.float64)
         rho = 1.225
 
         # Substep integration (4 substeps per update for numerical fidelity)
@@ -125,7 +168,7 @@ class DynamicTwinModel:
             self.motor_thrusts += (target_thrusts - self.motor_thrusts) * alpha_m
             thrusts = self.motor_thrusts.copy()
 
-            # 2. Ground effect augmentation
+            # 2. Ground effect augmentation (alt_agl = -pos[2] in NED)
             alt_agl = max(0.01, -self.pos[2])
             if alt_agl < 4.0 * p.prop_radius_m:
                 ratio = p.prop_radius_m / (4.0 * max(alt_agl, p.prop_radius_m))
@@ -150,25 +193,35 @@ class DynamicTwinModel:
             ])
 
             # 5. Quaternion body-to-world rotation
+            # In FRD body frame, nominal rotor thrust acts along negative body z (-z_b).
+            # Rotating [0, 0, -F_total] from body to NED world frame via R_nb:
             q0, q1, q2, q3 = self.quat
             thrust_world = np.array([
-                2.0 * (q1*q3 - q0*q2) * F_total,
-                2.0 * (q2*q3 + q0*q1) * F_total,
-                (q0*q0 - q1*q1 - q2*q2 + q3*q3) * F_total,
+                -2.0 * (q1*q3 + q0*q2) * F_total,
+                -2.0 * (q2*q3 - q0*q1) * F_total,
+                -(q0*q0 - q1*q1 - q2*q2 + q3*q3) * F_total,
             ])
 
             # 6. Translational drag
             drag_world = -0.5 * rho * p.cd_translational * p.frontal_area_m2 * self.vel * np.abs(self.vel)
 
-            # 7. Translational acceleration
-            acc_world = (thrust_world + drag_world) / p.mass_kg + np.array([0.0, 0.0, -g])
+            # 7. Translational acceleration (NED frame: +z down, gravity g_ned = [0, 0, +g])
+            acc_world = (thrust_world + drag_world) / p.mass_kg + g_ned
             self.vel += acc_world * sub_dt
             self.pos += self.vel * sub_dt
 
-            # 8. Angular dynamics
-            I_diag = np.array([p.ixx, p.iyy, p.izz])
+            # 8. Angular dynamics via full Euler rigid-body equation:
+            # I_b * omega_dot + omega x (I_b * omega) = tau_total
+            # => omega_dot = I_b^{-1} (tau_total - omega x (I_b * omega))
+            I_mat = p.inertia_tensor
             total_tau = np.array([tau_roll, tau_pitch, tau_yaw]) + tau_gyro
-            self.omega += (total_tau / I_diag) * sub_dt
+            gyro_moment = np.cross(self.omega, I_mat @ self.omega)
+            tau_effective = total_tau - gyro_moment
+            try:
+                omega_dot = np.linalg.solve(I_mat, tau_effective)
+            except np.linalg.LinAlgError:
+                omega_dot = tau_effective / np.array([p.ixx, p.iyy, p.izz])
+            self.omega += omega_dot * sub_dt
 
             # 9. Quaternion kinematic propagation
             wx, wy, wz = self.omega
@@ -190,6 +243,14 @@ class DynamicTwinModel:
         pitch = math.asin(max(-1.0, min(1.0, 2.0*(q0*q2 - q3*q1))))
         yaw = math.atan2(2.0*(q0*q3 + q1*q2), 1.0 - 2.0*(q2*q2 + q3*q3))
 
+        # Compute specific force in body frame (what an on-board accelerometer measures)
+        R_nb = np.array([
+            [1.0 - 2.0*(q2*q2 + q3*q3), 2.0*(q1*q2 - q0*q3),       2.0*(q1*q3 + q0*q2)],
+            [2.0*(q1*q2 + q0*q3),       1.0 - 2.0*(q1*q1 + q3*q3), 2.0*(q2*q3 - q0*q1)],
+            [2.0*(q1*q3 - q0*q2),       2.0*(q2*q3 + q0*q1),       1.0 - 2.0*(q1*q1 + q2*q2)],
+        ])
+        f_b = R_nb.T @ (acc_world - g_ned)
+
         return DroneStateVector(
             vehicle_id=self.vehicle_id,
             sequence=self._seq,
@@ -206,9 +267,9 @@ class DynamicTwinModel:
             vx=float(self.vel[0]),
             vy=float(self.vel[1]),
             vz=float(self.vel[2]),
-            ax=float(acc_world[0]),
-            ay=float(acc_world[1]),
-            az=float(acc_world[2]),
+            ax=float(f_b[0]),
+            ay=float(f_b[1]),
+            az=float(f_b[2]),
             q0=float(q0),
             q1=float(q1),
             q2=float(q2),

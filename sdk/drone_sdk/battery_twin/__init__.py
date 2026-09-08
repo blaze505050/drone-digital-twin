@@ -40,6 +40,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from .nasa_adapter import NASABatteryDatasetAdapter, NASACycleRecord
+from .pack_model import EnergyPredictionBaseline, PackECMModel, PackState
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -200,37 +201,15 @@ class TheveninECM:
         R1   = cell.r1_at_temp(self._temp)
         C1   = cell.C1
 
-        # RK4 integration
-        def derivatives(soc: float, v_rc: float, I: float) -> Tuple[float, float]:
-            dsoc  = -I / (3600.0 * Q)          # dSOC/dt
-            dv_rc = -v_rc / (R1 * C1) + I / C1  # dV_RC/dt
-            return dsoc, dv_rc
-
-        # k1
-        k1_soc, k1_vrc = derivatives(self._soc, self._v_rc, current)
-        # k2
-        k2_soc, k2_vrc = derivatives(
-            self._soc + 0.5*dt*k1_soc,
-            self._v_rc + 0.5*dt*k1_vrc, current,
-        )
-        # k3
-        k3_soc, k3_vrc = derivatives(
-            self._soc + 0.5*dt*k2_soc,
-            self._v_rc + 0.5*dt*k2_vrc, current,
-        )
-        # k4
-        k4_soc, k4_vrc = derivatives(
-            self._soc + dt*k3_soc,
-            self._v_rc + dt*k3_vrc, current,
-        )
-
-        self._soc  = float(np.clip(
-            self._soc  + (dt/6) * (k1_soc  + 2*k2_soc  + 2*k3_soc  + k4_soc),
+        # Exact discrete-time state transition for linear 1st-order RC branch
+        # Guaranteed unconditionally stable for arbitrary large or small dt
+        tau = max(1e-6, R1 * C1)
+        decay = math.exp(-dt / tau)
+        self._v_rc = float(self._v_rc * decay + current * R1 * (1.0 - decay))
+        self._soc = float(np.clip(
+            self._soc - (current * dt) / (3600.0 * max(1e-4, Q)),
             0.0, 1.0
         ))
-        self._v_rc = float(
-            self._v_rc + (dt/6) * (k1_vrc + 2*k2_vrc + 2*k3_vrc + k4_vrc)
-        )
 
         # Terminal voltage
         v_ocv       = cell.ocv(self._soc)
