@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAV Digital Twin — Flight Simulator</title>
+    <meta name="description" content="Real-time 3D UAV flight dynamics simulator with game-level graphics, connected to a digital twin backend.">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Three.js from CDN -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader-content">
+            <div class="loader-ring">
+                <div class="ring-segment"></div>
+                <div class="ring-segment"></div>
+                <div class="ring-segment"></div>
+            </div>
+            <h1 class="loader-title">UAV DIGITAL TWIN</h1>
+            <p class="loader-subtitle">Flight Dynamics Simulator</p>
+            <div class="loader-bar">
+                <div class="loader-progress" id="load-progress"></div>
+            </div>
+            <p class="loader-status" id="load-status">Initialising engine...</p>
+        </div>
+    </div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="hud-container" style="display:none;">
+        <!-- Top bar -->
+        <div class="hud-top">
+            <div class="hud-panel hud-type">
+                <span class="hud-label">VEHICLE</span>
+                <span class="hud-value" id="hud-uav-type">QUADROTOR</span>
+            </div>
+            <div class="hud-panel hud-time">
+                <span class="hud-label">T+</span>
+                <span class="hud-value" id="hud-time">00:00.0</span>
+            </div>
+            <div class="hud-panel hud-status">
+                <span class="hud-label">STATUS</span>
+                <span class="hud-value hud-status-indicator" id="hud-connection">OFFLINE</span>
+            </div>
+        </div>
+
+        <!-- Left panel: Attitude -->
+        <div class="hud-left">
+            <div class="hud-panel attitude-panel">
+                <canvas id="attitude-canvas" width="180" height="180"></canvas>
+                <div class="attitude-labels">
+                    <span id="att-roll">R: 0.0°</span>
+                    <span id="att-pitch">P: 0.0°</span>
+                    <span id="att-yaw">Y: 0.0°</span>
+                </div>
+            </div>
+            <div class="hud-panel altitude-panel">
+                <span class="hud-label">ALTITUDE (m)</span>
+                <span class="hud-big-value" id="hud-alt">0.0</span>
+                <div class="alt-tape" id="alt-tape"></div>
+            </div>
+            <div class="hud-panel speed-panel">
+                <span class="hud-label">AIRSPEED (m/s)</span>
+                <span class="hud-big-value" id="hud-speed">0.0</span>
+            </div>
+        </div>
+
+        <!-- Right panel: Twin + Telemetry -->
+        <div class="hud-right">
+            <div class="hud-panel twin-panel">
+                <h3 class="panel-title">DIGITAL TWIN</h3>
+                <div class="twin-row">
+                    <span class="twin-label">Health Score</span>
+                    <div class="health-bar">
+                        <div class="health-fill" id="twin-health-bar"></div>
+                    </div>
+                    <span class="twin-value" id="twin-health">100%</span>
+                </div>
+                <div class="twin-row">
+                    <span class="twin-label">Phase</span>
+                    <span class="twin-value" id="twin-phase">HOVER</span>
+                </div>
+                <div class="twin-row">
+                    <span class="twin-label">Wind</span>
+                    <span class="twin-value" id="twin-wind">0.0 m/s</span>
+                </div>
+            </div>
+            <div class="hud-panel motor-panel">
+                <h3 class="panel-title">MOTORS</h3>
+                <div class="motor-grid" id="motor-grid">
+                    <div class="motor-bar-wrap"><div class="motor-bar" id="motor-0"></div><span>M1</span></div>
+                    <div class="motor-bar-wrap"><div class="motor-bar" id="motor-1"></div><span>M2</span></div>
+                    <div class="motor-bar-wrap"><div class="motor-bar" id="motor-2"></div><span>M3</span></div>
+                    <div class="motor-bar-wrap"><div class="motor-bar" id="motor-3"></div><span>M4</span></div>
+                </div>
+            </div>
+            <div class="hud-panel battery-panel">
+                <span class="hud-label">BATTERY</span>
+                <div class="battery-container">
+                    <div class="battery-fill" id="battery-fill"></div>
+                </div>
+                <span class="hud-value" id="battery-soc">100%</span>
+            </div>
+        </div>
+
+        <!-- Bottom bar: Compass + Controls hint -->
+        <div class="hud-bottom">
+            <div class="hud-panel compass-panel">
+                <canvas id="compass-canvas" width="300" height="40"></canvas>
+            </div>
+            <div class="hud-panel controls-hint">
+                <span>WASD: Move | ↑↓: Altitude | ←→: Yaw | C: Camera | 1-5: UAV Type</span>
+            </div>
+        </div>
+
+        <!-- Position readout -->
+        <div class="hud-pos" id="hud-pos">
+            <span>N: <b id="pos-n">0.0</b></span>
+            <span>E: <b id="pos-e">0.0</b></span>
+            <span>D: <b id="pos-d">0.0</b></span>
+        </div>
+    </div>
+
+    <!-- UAV Type Selector -->
+    <div id="type-selector" style="display:none;">
+        <button class="type-btn active" data-type="quadrotor">Quadrotor</button>
+        <button class="type-btn" data-type="hexarotor">Hexarotor</button>
+        <button class="type-btn" data-type="octorotor">Octorotor</button>
+        <button class="type-btn" data-type="fixed_wing">Fixed Wing</button>
+        <button class="type-btn" data-type="vtol">VTOL</button>
+    </div>
+
+    <!-- Camera mode indicator -->
+    <div id="camera-mode" style="display:none;">
+        <span id="cam-label">CHASE CAM</span>
+    </div>
+
+    <!-- Main 3D canvas -->
+    <canvas id="simulator-canvas"></canvas>
+
+    <!-- App scripts -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

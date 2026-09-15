@@ -300,7 +300,7 @@ class DroneStateVector:
 
 # ── Partial update type ───────────────────────────────────────────────────────
 
-@dataclass
+@dataclass(eq=False)
 class DroneStateUpdate:
     """Partial state update produced by a single data-source adapter.
 

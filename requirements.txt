@@ -70,3 +70,8 @@ mypy>=1.0.0
 
 # ── Gazebo transport (optional) ──────────────────────────────────────────────
 # pip install gz-transport13
+
+# ── Module 30: 3D Flight Dynamics Simulator & Web Telemetry (optional) ───────
+# pip install websockets
+websockets>=12.0
+
