@@ -433,3 +433,12 @@ class FlightSimulator:
     def stop(self) -> None:
         """Stop the WebSocket server loop."""
         self._running = False
+
+    # Alias for run_websocket_server
+    start_server = run_websocket_server
+
+
+if __name__ == "__main__":
+    sim = FlightSimulator()
+    print("Starting FlightSimulator WebSocket telemetry server...")
+    sim.run_websocket_server()
