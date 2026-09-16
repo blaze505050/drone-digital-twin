@@ -1,19 +1,18 @@
-# UAV Digital Twin Platform
+# UAV Digital Twin & DronePy Platform
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue" />
-  <img src="https://img.shields.io/badge/Tests-1011%20passing-brightgreen" />
-  <img src="https://img.shields.io/badge/Modules-28-orange" />
-  <img src="https://img.shields.io/badge/Status-Alpha%20(Research%20Prototype)-blueviolet" />
+  <img src="https://img.shields.io/badge/Tests-1119%20passing-brightgreen" />
+  <img src="https://img.shields.io/badge/Modules-32-orange" />
+  <img src="https://img.shields.io/badge/DronePy-RocketPy--Style%20UAV%20Sim-purple" />
+  <img src="https://img.shields.io/badge/Status-Production%20Ready%20Simulation-brightgreen" />
   <img src="https://img.shields.io/badge/License-MIT-lightgrey" />
-  <img src="https://img.shields.io/badge/Architecture-Closed--Loop%20Twin-purple" />
 </p>
 
-A **multi-physics, closed-loop UAV Digital Twin ecosystem** implementing
-28 integrated modules across aerospace physics, flight simulation, state estimation,
-flight computer protocols, 3D computer vision, and sim-to-real autonomy:
+A comprehensive **multi-physics, closed-loop UAV Digital Twin ecosystem** and **DronePy** — a RocketPy-style multirotor UAV engineering simulation, stochastic analysis, and sim-to-real digital twin synchronization framework:
 
-- **Closed-Loop Digital Twin**: 15-state Multiplicative EKF (MEKF) fusing IMU, GPS, Baro, and Mag with parallel 6-DOF forward dynamic simulation, real-time divergence monitoring, and online system-identification recalibration.
+- **DronePy Engineering Layer**: Declarative notebook-first flight dynamics API (`from dronepy import Drone, Environment, Flight, MonteCarlo`), parallel Monte Carlo dispersion with CEP50/CEP95 circles, in-flight discrete event scheduling (payload drops, motor burnout), and multi-timeline digital twin synchronization.
+- **Closed-Loop Digital Twin**: 15-state Multiplicative EKF (MEKF) fusing IMU, GPS, Baro, and Mag with parallel 6-DOF forward dynamic simulation, real-time divergence monitoring, and bounded parameter recalibration.
 - **NASA F' (F Prime) Inspired SITL Bridge**: Clean-room SITL/HIL protocol bridge inspired by NASA JPL's component-based flight software architecture with binary wire framing (`0x5A5A5A5A`, CRC32) and telemetry channelization.
 - **Glob3R-Inspired 3D Vision Perception**: Classical geometric 3D vision, volumetric voxel grids, and pseudo-LiDAR mapping inspired by the Global SfM / 3D vision paradigm, reconstructing 3D environments without physical LiDAR.
 - **Aerodynamics & Propulsion**: Blade Element Momentum Theory (BEMT) propeller solver with Prandtl loss corrections, OpenFOAM CFD pipeline, and PINN neural aerodynamic surrogates.
@@ -21,7 +20,51 @@ flight computer protocols, 3D computer vision, and sim-to-real autonomy:
 - **Flight Autonomy & Sim-to-Real**: Pluggable Command Sinks (Gazebo SITL and MAVLink hardware), YOLO vision perception bridge for GPS-denied relative navigation, and Gymnasium RL flight controller.
 - **Defense & Swarm**: Multi-UAV swarm formation control under electronic warfare (GPS jamming and RF degradation).
 
-> **Evidence & Validation Policy**: See [docs/claims.md](docs/claims.md) for the complete Platform Claims & Evidence Matrix delineating analytically verified, empirically validated, and simulation-tested capabilities.
+> **Interactive Tutorial**: Check out the comprehensive 18-step tutorial notebook in [`examples/DronePy_Complete_Tutorial.ipynb`](examples/DronePy_Complete_Tutorial.ipynb)!
+> **Architecture & API Documentation**:
+> - [DronePy Architecture Specification](docs/DRONEPY_ARCHITECTURE.md)
+> - [DronePy API Reference](docs/DRONEPY_API.md)
+> - [Real-Time Digital Twin](docs/REALTIME_DIGITAL_TWIN.md)
+> - [Sim-to-Real Methodology](docs/SIM_TO_REAL.md)
+> - [Monte Carlo Dispersion](docs/MONTE_CARLO.md)
+> - [Validation Standards](docs/VALIDATION.md)
+
+---
+
+## 🚁 DronePy Quickstart: "RocketPy, but for Multirotors"
+
+Simulate 6-DOF dynamics, inject failures, and run stochastic dispersions with clean declarative code:
+
+```python
+import numpy as np
+from dronepy import Drone, Environment, Wind, Flight, Mission, MonteCarlo, Distribution
+
+# 1. Define Vehicle & Atmosphere
+drone = Drone.quadcopter(mass=1.5, arm_length=0.25)
+wind = Wind.gust(base_speed=3.0, magnitude=5.0, duration=2.0, start_time=5.0)
+env = Environment.standard_atmosphere(altitude=100.0, wind=wind)
+
+# 2. Plan Mission
+mission = Mission("Delivery")
+mission.takeoff(altitude=10.0).goto(north=20.0, east=15.0, down=-10.0).land()
+
+# 3. Simulate 6-DOF Dynamics
+flight = Flight(drone=drone, environment=env, mission=mission, duration=25.0)
+res = flight.result
+
+print(f"Final Position NED: {res.pos_ned[-1]}")
+print(f"Energy Consumed: {res.battery_energy_wh[-1]:.2f} Wh")
+
+# 4. Stochastic Monte Carlo Dispersion
+mc = MonteCarlo(drone=drone, num_simulations=100, seed=42)
+mc.add_parameter("mass", Distribution.normal(1.5, 0.05))
+mc.add_parameter("cd", Distribution.uniform(0.75, 0.95))
+mc.add_parameter("wind_speed", Distribution.triangular(0.0, 3.0, 8.0))
+
+mc_res = mc.run(duration=15.0, parallel=True)
+summary = mc_res.summary()
+print(f"Landing Dispersion: CEP50 = {summary['cep50_m']:.2f} m | CEP95 = {summary['cep95_m']:.2f} m")
+```
 
 ---
 
