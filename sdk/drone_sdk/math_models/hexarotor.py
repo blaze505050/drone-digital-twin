@@ -185,7 +185,19 @@ class HexarotorModel:
     ) -> ExternalWrench:
         """Compute body forces and torques from motor commands."""
         p = self.params
-        cmds = np.clip(motor_commands[:6], 0.0, 1.0)
+        if len(motor_commands) < 6:
+            cmds = np.zeros(6, dtype=np.float64)
+            if len(motor_commands) == 4:
+                cmds[[0, 1]] = motor_commands[0]
+                cmds[[2]]    = motor_commands[1]
+                cmds[[3, 4]] = motor_commands[2]
+                cmds[[5]]    = motor_commands[3]
+            elif len(motor_commands) > 0:
+                cmds[:len(motor_commands)] = motor_commands
+                cmds[len(motor_commands):] = np.mean(motor_commands)
+        else:
+            cmds = np.array(motor_commands[:6], dtype=np.float64)
+        cmds = np.clip(cmds, 0.0, 1.0)
 
         # Zero out failed motors
         for m_idx in self._failed_motors:

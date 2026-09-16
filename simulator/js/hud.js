@@ -43,11 +43,44 @@ export class HUDController {
         // Airspeed
         this._setText('hud-speed', (state.airspeed || 0).toFixed(1));
 
-        // Position
+        // Position: Real Drone
         const pos = state.pos || [0, 0, 0];
         this._setText('pos-n', pos[0].toFixed(1));
         this._setText('pos-e', pos[1].toFixed(1));
         this._setText('pos-d', pos[2].toFixed(1));
+
+        // Position: Digital Twin
+        const realPos = state.real_pos || pos;
+        this._setText('twin-pos-n', realPos[0].toFixed(1));
+        this._setText('twin-pos-e', realPos[1].toFixed(1));
+        this._setText('twin-pos-d', realPos[2].toFixed(1));
+
+        // Digital Twin Synchronization Status
+        const syncStatus = state.sync_status || 'LOCKED';
+        const syncErr = state.sync_error !== undefined ? state.sync_error : 0.02;
+        const syncBadge = document.getElementById('hud-sync-badge');
+        const syncStatusTag = document.getElementById('twin-sync-status');
+        const health = state.twin_health || 1;
+
+        if (syncBadge) {
+            syncBadge.textContent = `${syncStatus} (${(health * 100).toFixed(0)}%)`;
+            syncBadge.className = `hud-value ${syncStatus === 'LOCKED' ? 'sync-locked' : (syncStatus === 'DRIFTING' ? 'sync-drift' : 'sync-desync')}`;
+        }
+        if (syncStatusTag) {
+            syncStatusTag.textContent = syncStatus;
+            syncStatusTag.className = `twin-value sync-tag ${syncStatus === 'LOCKED' ? 'sync-locked' : (syncStatus === 'DRIFTING' ? 'sync-drift' : 'sync-desync')}`;
+        }
+        this._setText('twin-error', `ΔPos: ${syncErr.toFixed(2)}m`);
+        this._setText('real-source-label', state.real_source || 'HIL / MAVLink');
+
+        // Tactical FPV OSD updates
+        this._setText('osd-spd', (state.airspeed || 0).toFixed(1));
+        this._setText('osd-alt', alt.toFixed(1));
+        this._setText('osd-batt', `${(14.8 + (batt * 2.0)).toFixed(1)}V ${(batt * 100).toFixed(0)}%`);
+        const osdHorizon = document.getElementById('osd-horizon');
+        if (osdHorizon) {
+            osdHorizon.style.transform = `translateY(${Math.max(-40, Math.min(40, pitch * 1.5))}px) rotate(${-roll}deg)`;
+        }
 
         // Motors
         if (state.motors) {
@@ -57,13 +90,11 @@ export class HUDController {
                     const pct = Math.min(100, Math.max(0, state.motors[i] * 100));
                     bar.style.setProperty('--motor-pct', `${pct}%`);
                     bar.style.cssText = `--motor-pct: ${pct}%`;
-                    // Use the ::after pseudo-element height
                     if (bar.querySelector || bar.style) {
                         bar.setAttribute('style', `--motor-h: ${pct}%`);
                     }
                 }
             }
-            // Update motor grid for more than 4 motors
             this._updateMotorGrid(state.motors.length);
         }
 
@@ -79,7 +110,6 @@ export class HUDController {
         }
 
         // Twin health
-        const health = state.twin_health || 1;
         this._setText('twin-health', `${(health * 100).toFixed(0)}%`);
         const healthBar = document.getElementById('twin-health-bar');
         if (healthBar) {

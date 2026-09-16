@@ -359,14 +359,321 @@ body {
     position: absolute;
     bottom: 90px; left: 16px;
     display: flex;
-    gap: 16px;
+    gap: 20px;
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     color: var(--text-secondary);
 }
 .hud-pos b {
     color: var(--accent-cyan);
     font-weight: 500;
+}
+.twin-pos-tag {
+    color: #00ffaa;
+}
+.twin-pos-tag b {
+    color: #00ffaa;
+}
+
+/* ── Digital Twin Sync Badges & Text ────────────────────────────────────── */
+.sync-locked {
+    color: var(--accent-green) !important;
+    text-shadow: var(--glow-green);
+}
+.sync-drift {
+    color: var(--accent-orange) !important;
+}
+.sync-desync {
+    color: var(--accent-red) !important;
+    text-shadow: var(--glow-red);
+}
+.sync-tag {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(34, 217, 127, 0.15);
+    color: var(--accent-green);
+    font-weight: 600;
+}
+.highlight-cyan {
+    color: var(--accent-cyan) !important;
+    font-weight: 600;
+}
+.source-text {
+    font-size: 0.62rem !important;
+    color: #a0b2cc !important;
+}
+
+/* ── Laptop GCS Flight Controller Bar ───────────────────────────────────── */
+.hud-gcs-controller {
+    position: fixed;
+    bottom: 65px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(8, 12, 20, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-accent);
+    padding: 6px 14px;
+    border-radius: 30px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.gcs-btn {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 7px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    letter-spacing: 0.08em;
+    transition: all 0.25s ease;
+}
+.arm-btn {
+    background: rgba(255, 71, 87, 0.18);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+}
+.arm-btn.armed {
+    background: rgba(34, 217, 127, 0.25);
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+    box-shadow: var(--glow-green);
+}
+
+.flight-modes {
+    display: flex;
+    gap: 5px;
+}
+.mode-btn {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.mode-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-cyan);
+}
+.mode-btn.active {
+    background: rgba(0, 212, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    box-shadow: var(--glow-cyan);
+}
+.rtl-btn:hover {
+    border-color: var(--accent-orange);
+    color: var(--accent-orange);
+}
+
+.gcs-sync-mode {
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    padding-left: 6px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+.gcs-sync-mode label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+/* ── Live Drone Camera POV (Picture-in-Picture & Split Screen) ──────────── */
+.fpv-pip-panel {
+    position: fixed;
+    top: 65px; right: 16px;
+    width: 320px; height: 215px;
+    z-index: 28;
+    background: rgba(10, 14, 24, 0.88);
+    backdrop-filter: blur(10px);
+    border: 1.5px solid var(--accent-cyan);
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), var(--glow-cyan);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width 0.3s ease, height 0.3s ease, transform 0.3s ease;
+}
+
+.fpv-pip-panel.swapped {
+    top: 0 !important; left: 0 !important; right: auto !important; bottom: auto !important;
+    width: 100vw !important; height: 100vh !important;
+    border-radius: 0;
+    border: none;
+    z-index: 2;
+}
+
+body.split-active #simulator-canvas {
+    width: 50vw !important;
+    left: 50vw !important;
+}
+body.split-active .fpv-pip-panel {
+    top: 0 !important; left: 0 !important; right: auto !important;
+    width: 50vw !important; height: 100vh !important;
+    border-radius: 0;
+    border-right: 2px solid var(--accent-cyan);
+    border-top: none; border-left: none; border-bottom: none;
+    z-index: 10;
+}
+
+.fpv-header {
+    height: 30px;
+    background: rgba(5, 8, 15, 0.95);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+}
+.fpv-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    letter-spacing: 0.05em;
+}
+.rec-dot {
+    width: 7px; height: 7px;
+    background: #ff2244;
+    border-radius: 50%;
+    animation: recPulse 1.2s infinite;
+}
+@keyframes recPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.2; transform: scale(0.8); }
+}
+
+.fpv-actions {
+    display: flex;
+    gap: 5px;
+}
+.pip-btn {
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    padding: 2px 7px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.pip-btn:hover {
+    background: var(--accent-cyan);
+    color: #000;
+}
+
+.fpv-viewport {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    background: #000;
+    overflow: hidden;
+}
+#fpv-canvas {
+    width: 100%; height: 100%;
+    display: block;
+}
+#webcam-video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+}
+
+/* ── Tactical FPV OSD ───────────────────────────────────────────────────── */
+.fpv-osd {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    font-family: 'JetBrains Mono', Courier, monospace;
+    color: rgba(34, 255, 136, 0.95);
+    text-shadow: 0 0 6px rgba(34, 255, 136, 0.6);
+    font-size: 0.62rem;
+    padding: 8px;
+    box-sizing: border-box;
+}
+
+.osd-crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 32px; height: 32px;
+    transform: translate(-50%, -50%);
+}
+.osd-crosshair::before, .osd-crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(34, 255, 136, 0.85);
+}
+.osd-crosshair::before {
+    top: 15px; left: 0; width: 32px; height: 2px;
+}
+.osd-crosshair::after {
+    top: 0; left: 15px; width: 2px; height: 32px;
+}
+
+.osd-horizon-line {
+    position: absolute;
+    top: 50%; left: 30%; right: 30%;
+    height: 1px;
+    border-top: 1px dashed rgba(34, 255, 136, 0.6);
+    transform-origin: center;
+}
+
+.osd-top-left {
+    position: absolute;
+    top: 8px; left: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.osd-top-right {
+    position: absolute;
+    top: 8px; right: 8px;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.osd-bottom {
+    position: absolute;
+    bottom: 6px; left: 0; width: 100%;
+    text-align: center;
+    font-size: 0.52rem;
+    color: rgba(34, 255, 136, 0.7);
+    letter-spacing: 0.05em;
+}
+
+.osd-target-box {
+    position: absolute;
+    top: 52%; left: 45%;
+    width: 36px; height: 36px;
+    border: 1.5px solid rgba(0, 212, 255, 0.9);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+    animation: targetScan 2.5s infinite alternate;
+}
+.target-label {
+    position: absolute;
+    top: -14px; left: 0;
+    font-size: 0.5rem;
+    color: var(--accent-cyan);
+    white-space: nowrap;
+}
+@keyframes targetScan {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.15); }
 }
 
 /* ── Type selector ──────────────────────────────────────────────────────── */
@@ -407,7 +714,7 @@ body {
 /* ── Camera mode ────────────────────────────────────────────────────────── */
 #camera-mode {
     position: fixed;
-    top: 60px; right: 16px;
+    top: 20px; right: 350px;
     z-index: 20;
     font-family: var(--font-mono);
     font-size: 0.65rem;
@@ -422,9 +729,9 @@ body {
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
     .hud-left { display: none; }
     .hud-right { width: 160px; }
-    .hud-right .twin-panel { display: none; }
-    #type-selector { flex-wrap: wrap; }
+    .fpv-pip-panel { width: 220px; height: 150px; }
+    #camera-mode { right: 250px; }
 }

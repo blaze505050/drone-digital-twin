@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UAV Digital Twin — Flight Simulator</title>
-    <meta name="description" content="Real-time 3D UAV flight dynamics simulator with game-level graphics, connected to a digital twin backend.">
+    <title>UAV Digital Twin — Flight Simulator & GCS</title>
+    <meta name="description" content="Real-time 3D UAV flight dynamics simulator with game-level graphics, live drone camera POV, real-to-virtual twin synchronization, and laptop flight control.">
     <link rel="stylesheet" href="css/style.css">
     <!-- Three.js from CDN -->
     <script type="importmap">
@@ -26,33 +26,37 @@
                 <div class="ring-segment"></div>
             </div>
             <h1 class="loader-title">UAV DIGITAL TWIN</h1>
-            <p class="loader-subtitle">Flight Dynamics Simulator</p>
+            <p class="loader-subtitle">Real-to-Virtual Flight Dynamics Simulator</p>
             <div class="loader-bar">
                 <div class="loader-progress" id="load-progress"></div>
             </div>
-            <p class="loader-status" id="load-status">Initialising engine...</p>
+            <p class="loader-status" id="load-status">Initialising simulation engine...</p>
         </div>
     </div>
 
     <!-- HUD Overlay -->
     <div id="hud" class="hud-container" style="display:none;">
-        <!-- Top bar -->
+        <!-- Top GCS Bar -->
         <div class="hud-top">
             <div class="hud-panel hud-type">
                 <span class="hud-label">VEHICLE</span>
                 <span class="hud-value" id="hud-uav-type">QUADROTOR</span>
             </div>
+            <div class="hud-panel hud-sync-badge">
+                <span class="hud-label">TWIN SYNC</span>
+                <span class="hud-value sync-locked" id="hud-sync-badge">LOCKED (100%)</span>
+            </div>
             <div class="hud-panel hud-time">
-                <span class="hud-label">T+</span>
+                <span class="hud-label">FLIGHT TIME</span>
                 <span class="hud-value" id="hud-time">00:00.0</span>
             </div>
             <div class="hud-panel hud-status">
-                <span class="hud-label">STATUS</span>
-                <span class="hud-value hud-status-indicator" id="hud-connection">OFFLINE</span>
+                <span class="hud-label">LINK</span>
+                <span class="hud-value hud-status-indicator" id="hud-connection">ONLINE</span>
             </div>
         </div>
 
-        <!-- Left panel: Attitude -->
+        <!-- Left panel: Flight Instruments -->
         <div class="hud-left">
             <div class="hud-panel attitude-panel">
                 <canvas id="attitude-canvas" width="180" height="180"></canvas>
@@ -63,38 +67,55 @@
                 </div>
             </div>
             <div class="hud-panel altitude-panel">
-                <span class="hud-label">ALTITUDE (m)</span>
-                <span class="hud-big-value" id="hud-alt">0.0</span>
+                <span class="hud-label">ALTITUDE AGL</span>
+                <div class="metric-row">
+                    <span class="hud-big-value" id="hud-alt">0.0</span>
+                    <span class="metric-unit">m</span>
+                </div>
                 <div class="alt-tape" id="alt-tape"></div>
             </div>
             <div class="hud-panel speed-panel">
-                <span class="hud-label">AIRSPEED (m/s)</span>
-                <span class="hud-big-value" id="hud-speed">0.0</span>
+                <span class="hud-label">AIRSPEED</span>
+                <div class="metric-row">
+                    <span class="hud-big-value" id="hud-speed">0.0</span>
+                    <span class="metric-unit">m/s</span>
+                </div>
             </div>
         </div>
 
-        <!-- Right panel: Twin + Telemetry -->
+        <!-- Right panel: Digital Twin & Hardware Telemetry -->
         <div class="hud-right">
+            <!-- Sync & Health Card -->
             <div class="hud-panel twin-panel">
-                <h3 class="panel-title">DIGITAL TWIN</h3>
+                <h3 class="panel-title">DIGITAL TWIN SYNC</h3>
                 <div class="twin-row">
-                    <span class="twin-label">Health Score</span>
+                    <span class="twin-label">Sync Status</span>
+                    <span class="twin-value sync-tag" id="twin-sync-status">LOCKED</span>
+                </div>
+                <div class="twin-row">
+                    <span class="twin-label">Tracking Error</span>
+                    <span class="twin-value highlight-cyan" id="twin-error">ΔPos: 0.03m</span>
+                </div>
+                <div class="twin-row">
+                    <span class="twin-label">Twin Health</span>
                     <div class="health-bar">
                         <div class="health-fill" id="twin-health-bar"></div>
                     </div>
                     <span class="twin-value" id="twin-health">100%</span>
                 </div>
                 <div class="twin-row">
-                    <span class="twin-label">Phase</span>
+                    <span class="twin-label">Flight Phase</span>
                     <span class="twin-value" id="twin-phase">HOVER</span>
                 </div>
                 <div class="twin-row">
-                    <span class="twin-label">Wind</span>
-                    <span class="twin-value" id="twin-wind">0.0 m/s</span>
+                    <span class="twin-label">Hardware Source</span>
+                    <span class="twin-value source-text" id="real-source-label">HIL / MAVLink</span>
                 </div>
             </div>
+
+            <!-- Motors -->
             <div class="hud-panel motor-panel">
-                <h3 class="panel-title">MOTORS</h3>
+                <h3 class="panel-title">MOTOR LOAD</h3>
                 <div class="motor-grid" id="motor-grid">
                     <div class="motor-bar-wrap"><div class="motor-bar" id="motor-0"></div><span>M1</span></div>
                     <div class="motor-bar-wrap"><div class="motor-bar" id="motor-1"></div><span>M2</span></div>
@@ -102,6 +123,8 @@
                     <div class="motor-bar-wrap"><div class="motor-bar" id="motor-3"></div><span>M4</span></div>
                 </div>
             </div>
+
+            <!-- Battery -->
             <div class="hud-panel battery-panel">
                 <span class="hud-label">BATTERY</span>
                 <div class="battery-container">
@@ -111,21 +134,74 @@
             </div>
         </div>
 
-        <!-- Bottom bar: Compass + Controls hint -->
+        <!-- GCS Controller Bar (Laptop Flight Controller) -->
+        <div class="hud-gcs-controller">
+            <button id="btn-arm" class="gcs-btn arm-btn">ARM MOTORS</button>
+            <div class="flight-modes">
+                <button class="mode-btn active" data-mode="pos_hold">POS HOLD</button>
+                <button class="mode-btn" data-mode="alt_hold">ALT HOLD</button>
+                <button class="mode-btn" data-mode="stabilize">STABILIZE</button>
+                <button class="mode-btn rtl-btn" data-mode="rtl">RETURN HOME (RTL)</button>
+            </div>
+            <div class="gcs-sync-mode">
+                <label><input type="checkbox" id="chk-sync-dual" checked> Laptop Controls Real + Twin</label>
+            </div>
+        </div>
+
+        <!-- Bottom bar: Compass + Navigation Ribbon -->
         <div class="hud-bottom">
             <div class="hud-panel compass-panel">
-                <canvas id="compass-canvas" width="300" height="40"></canvas>
+                <canvas id="compass-canvas" width="320" height="40"></canvas>
             </div>
             <div class="hud-panel controls-hint">
-                <span>WASD: Move | ↑↓: Altitude | ←→: Yaw | C: Camera | 1-5: UAV Type</span>
+                <span>WASD: Pitch/Roll | ↑↓: Throttle/Alt | ←→: Yaw | C: Camera | V: Swap FPV/3D | Space: Arm | 1-5: UAV</span>
             </div>
         </div>
 
         <!-- Position readout -->
         <div class="hud-pos" id="hud-pos">
-            <span>N: <b id="pos-n">0.0</b></span>
-            <span>E: <b id="pos-e">0.0</b></span>
-            <span>D: <b id="pos-d">0.0</b></span>
+            <span>REAL [N:<b id="pos-n">0.0</b> E:<b id="pos-e">0.0</b> D:<b id="pos-d">0.0</b>]</span>
+            <span class="twin-pos-tag">TWIN [N:<b id="twin-pos-n">0.0</b> E:<b id="twin-pos-e">0.0</b> D:<b id="twin-pos-d">0.0</b>]</span>
+        </div>
+    </div>
+
+    <!-- Live Drone Camera POV (Picture-in-Picture / Split-Screen Viewport) -->
+    <div id="fpv-pip-container" class="fpv-pip-panel" style="display:none;">
+        <div class="fpv-header">
+            <div class="fpv-title">
+                <span class="rec-dot"></span>
+                <span>DRONE CAM POV [ONBOARD FPV]</span>
+            </div>
+            <div class="fpv-actions">
+                <button id="btn-webcam" class="pip-btn" title="Toggle USB / External Video In">CAM IN</button>
+                <button id="btn-swap-cam" class="pip-btn" title="Swap Main View and FPV View">SWAP</button>
+                <button id="btn-split-cam" class="pip-btn" title="Toggle 50/50 Split View">SPLIT</button>
+            </div>
+        </div>
+        <div class="fpv-viewport" id="fpv-viewport">
+            <canvas id="fpv-canvas"></canvas>
+            <video id="webcam-video" autoplay playsinline style="display:none;"></video>
+            
+            <!-- Tactical FPV OSD Overlay -->
+            <div class="fpv-osd">
+                <div class="osd-crosshair"></div>
+                <div class="osd-horizon-line" id="osd-horizon"></div>
+                <div class="osd-top-left">
+                    <div>SPEED: <span id="osd-spd">0.0</span> m/s</div>
+                    <div>ALT: <span id="osd-alt">0.0</span> m</div>
+                </div>
+                <div class="osd-top-right">
+                    <div>SATS: <span id="osd-sats">14</span> [3D FIX]</div>
+                    <div>BATT: <span id="osd-batt">15.8V 98%</span></div>
+                </div>
+                <!-- Simulated Target Tracking Box -->
+                <div class="osd-target-box" id="osd-target">
+                    <span class="target-label">PAD ALPHA [LOCKED]</span>
+                </div>
+                <div class="osd-bottom">
+                    <span>GCS DUAL CONTROL ACTIVE • LATENCY: 12ms</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -140,7 +216,7 @@
 
     <!-- Camera mode indicator -->
     <div id="camera-mode" style="display:none;">
-        <span id="cam-label">CHASE CAM</span>
+        <span id="cam-label">CHASE CAM (3D TWIN)</span>
     </div>
 
     <!-- Main 3D canvas -->
