@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UAV Digital Twin — Flight Simulator & GCS</title>
-    <meta name="description" content="Real-time 3D UAV flight dynamics simulator with game-level graphics, live drone camera POV, real-to-virtual twin synchronization, and laptop flight control.">
+    <title>UAV Digital Twin — Flight Dynamics Simulator & GCS</title>
+    <meta name="description" content="High-fidelity 3D UAV flight dynamics simulator with realistic graphics, gamified aerobatic ring racing course, onboard camera POV, and real-to-virtual twin synchronization.">
     <link rel="stylesheet" href="css/style.css">
     <!-- Three.js from CDN -->
     <script type="importmap">
@@ -26,7 +26,7 @@
                 <div class="ring-segment"></div>
             </div>
             <h1 class="loader-title">UAV DIGITAL TWIN</h1>
-            <p class="loader-subtitle">Real-to-Virtual Flight Dynamics Simulator</p>
+            <p class="loader-subtitle">Realistic 3D Flight Simulator & Gamified Arena</p>
             <div class="loader-bar">
                 <div class="loader-progress" id="load-progress"></div>
             </div>
@@ -44,7 +44,7 @@
             </div>
             <div class="hud-panel hud-sync-badge">
                 <span class="hud-label">TWIN SYNC</span>
-                <span class="hud-value sync-locked" id="hud-sync-badge">LOCKED (100%)</span>
+                <span class="hud-value sync-locked" id="hud-sync-badge">VIRTUAL ONLY (100%)</span>
             </div>
             <div class="hud-panel hud-time">
                 <span class="hud-label">FLIGHT TIME</span>
@@ -54,6 +54,25 @@
                 <span class="hud-label">LINK</span>
                 <span class="hud-value hud-status-indicator" id="hud-connection">ONLINE</span>
             </div>
+            <!-- Physical Drone Hardware Link Toggle -->
+            <button id="btn-link-real" class="hud-link-btn" title="Toggle Physical Drone telemetry and 3D visibility (Key: L)">
+                <span class="link-dot"></span>
+                <span id="link-btn-text">LINK REAL DRONE</span>
+            </button>
+            <!-- Web Audio Sound Engine Toggle -->
+            <button id="btn-audio" class="hud-audio-btn" title="Toggle Procedural Drone Audio (Motor Whine & Wind)">
+                <span id="audio-btn-icon">🔇 MUTE</span>
+            </button>
+        </div>
+
+        <!-- Gamification Course Banner -->
+        <div class="hud-game-banner" id="game-banner">
+            <div class="game-badge">MISSION: AIRFIELD RING SPRINT</div>
+            <div class="game-stat">GATE: <b id="game-gate">1 / 8</b></div>
+            <div class="game-stat">LAP: <b id="game-lap">0.0s</b></div>
+            <div class="game-stat">BEST: <b id="game-best">--:--.-</b></div>
+            <div class="game-stat">SCORE: <b id="game-score">0</b></div>
+            <button id="btn-reset-race" class="game-reset-btn" title="Restart Ring Race">RESET RACE</button>
         </div>
 
         <!-- Left panel: Flight Instruments -->
@@ -81,6 +100,11 @@
                     <span class="metric-unit">m/s</span>
                 </div>
             </div>
+            <!-- Tactical Minimap Radar -->
+            <div class="hud-panel radar-panel">
+                <span class="hud-label">TACTICAL AIRFIELD RADAR</span>
+                <canvas id="radar-canvas" width="160" height="160"></canvas>
+            </div>
         </div>
 
         <!-- Right panel: Digital Twin & Hardware Telemetry -->
@@ -90,11 +114,11 @@
                 <h3 class="panel-title">DIGITAL TWIN SYNC</h3>
                 <div class="twin-row">
                     <span class="twin-label">Sync Status</span>
-                    <span class="twin-value sync-tag" id="twin-sync-status">LOCKED</span>
+                    <span class="twin-value sync-tag" id="twin-sync-status">VIRTUAL MODE</span>
                 </div>
                 <div class="twin-row">
-                    <span class="twin-label">Tracking Error</span>
-                    <span class="twin-value highlight-cyan" id="twin-error">ΔPos: 0.03m</span>
+                    <span class="twin-label">Tracking Residual</span>
+                    <span class="twin-value highlight-cyan" id="twin-error">ΔPos: 0.00m</span>
                 </div>
                 <div class="twin-row">
                     <span class="twin-label">Twin Health</span>
@@ -109,7 +133,7 @@
                 </div>
                 <div class="twin-row">
                     <span class="twin-label">Hardware Source</span>
-                    <span class="twin-value source-text" id="real-source-label">HIL / MAVLink</span>
+                    <span class="twin-value source-text" id="real-source-label">Standalone Twin</span>
                 </div>
             </div>
 
@@ -154,13 +178,13 @@
                 <canvas id="compass-canvas" width="320" height="40"></canvas>
             </div>
             <div class="hud-panel controls-hint">
-                <span>WASD: Pitch/Roll | ↑↓: Throttle/Alt | ←→: Yaw | C: Camera | V: Swap FPV/3D | Space: Arm | 1-5: UAV</span>
+                <span>WASD: Pitch/Roll | ↑↓: Throttle | ←→: Yaw | C: Camera | V: Swap FPV/3D | L: Link Real Drone | Space: Arm | 1-5: UAV</span>
             </div>
         </div>
 
         <!-- Position readout -->
         <div class="hud-pos" id="hud-pos">
-            <span>REAL [N:<b id="pos-n">0.0</b> E:<b id="pos-e">0.0</b> D:<b id="pos-d">0.0</b>]</span>
+            <span>REAL [N:<b id="pos-n">OFFLINE</b> E:<b id="pos-e">--</b> D:<b id="pos-d">--</b>]</span>
             <span class="twin-pos-tag">TWIN [N:<b id="twin-pos-n">0.0</b> E:<b id="twin-pos-e">0.0</b> D:<b id="twin-pos-d">0.0</b>]</span>
         </div>
     </div>
@@ -169,21 +193,29 @@
     <div id="fpv-pip-container" class="fpv-pip-panel" style="display:none;">
         <div class="fpv-header">
             <div class="fpv-title">
-                <span class="rec-dot"></span>
-                <span>DRONE CAM POV [ONBOARD FPV]</span>
+                <span class="rec-dot" id="fpv-rec-dot"></span>
+                <span id="fpv-title-text">REAL DRONE CAM POV</span>
             </div>
             <div class="fpv-actions">
                 <button id="btn-webcam" class="pip-btn" title="Toggle USB / External Video In">CAM IN</button>
-                <button id="btn-swap-cam" class="pip-btn" title="Swap Main View and FPV View">SWAP</button>
+                <button id="btn-swap-cam" class="pip-btn" title="Swap Main View and FPV View (Key: V)">SWAP</button>
                 <button id="btn-split-cam" class="pip-btn" title="Toggle 50/50 Split View">SPLIT</button>
             </div>
         </div>
         <div class="fpv-viewport" id="fpv-viewport">
             <canvas id="fpv-canvas"></canvas>
             <video id="webcam-video" autoplay playsinline style="display:none;"></video>
+
+            <!-- Real Drone Standby Overlay (Displayed when Real Drone is NOT connected) -->
+            <div id="fpv-standby" class="fpv-standby-overlay">
+                <div class="radar-scan-anim"></div>
+                <div class="standby-tag">NO HARDWARE LINK DETECTED</div>
+                <div class="standby-desc">Virtual Digital Twin active in 3D simulator.<br>Connect physical drone or click below to link telemetry and view onboard POV.</div>
+                <button id="btn-standby-link" class="standby-link-action">⚡ LINK PHYSICAL DRONE (KEY: L)</button>
+            </div>
             
             <!-- Tactical FPV OSD Overlay -->
-            <div class="fpv-osd">
+            <div class="fpv-osd" id="fpv-osd" style="display:none;">
                 <div class="osd-crosshair"></div>
                 <div class="osd-horizon-line" id="osd-horizon"></div>
                 <div class="osd-top-left">
@@ -191,7 +223,7 @@
                     <div>ALT: <span id="osd-alt">0.0</span> m</div>
                 </div>
                 <div class="osd-top-right">
-                    <div>SATS: <span id="osd-sats">14</span> [3D FIX]</div>
+                    <div>SATS: <span id="osd-sats">16</span> [3D FIX]</div>
                     <div>BATT: <span id="osd-batt">15.8V 98%</span></div>
                 </div>
                 <!-- Simulated Target Tracking Box -->
@@ -199,7 +231,7 @@
                     <span class="target-label">PAD ALPHA [LOCKED]</span>
                 </div>
                 <div class="osd-bottom">
-                    <span>GCS DUAL CONTROL ACTIVE • LATENCY: 12ms</span>
+                    <span>PHYSICAL DRONE TELEMETRY SYNCED • LATENCY: 9ms</span>
                 </div>
             </div>
         </div>

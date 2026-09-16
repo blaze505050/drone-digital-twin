@@ -182,8 +182,8 @@ class FlightSimulator:
         self.real_pos = np.array([0.0, 0.0, -2.0], dtype=np.float64)
         self.real_vel = np.zeros(3, dtype=np.float64)
         self.real_euler = np.zeros(3, dtype=np.float64)
-        self.real_connected = True
-        self.real_source = "Hardware HIL Stream (MAVLink Bridge Ready)"
+        self.real_connected = False
+        self.real_source = "Standalone Twin (Physics Sim)"
 
     def _setup_uav(self) -> None:
         """Instantiate the appropriate UAV dynamics model."""
@@ -432,6 +432,12 @@ class FlightSimulator:
                         if "target" in data:
                             t = data["target"]
                             self.target_pos = np.array([t["x"], t["y"], t["z"]], dtype=np.float64)
+                        if "real_connected" in data:
+                            self.real_connected = bool(data["real_connected"])
+                            if self.real_connected:
+                                self.real_source = "Hardware HIL Stream (MAVLink Active)"
+                            else:
+                                self.real_source = "Standalone Twin (Physics Sim)"
                         if "uav_type" in data:
                             new_type = UAVType(data["uav_type"])
                             if new_type != self.config.uav_type:
