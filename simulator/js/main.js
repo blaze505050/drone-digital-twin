@@ -304,7 +304,7 @@ function animate() {
     if (telemetry && telemetry.connected) {
         telemetry.sendInput(cmds);
     } else {
-        runOfflineFlight(elapsed, delta);
+        runOfflineFlight(elapsed, delta, cmds);
     }
 
     // Determine active drone position for ground effect and gamification
@@ -437,58 +437,155 @@ function updateFPVCamera() {
     fpvCamera.lookAt(mountPos.clone().add(forwardVec.multiplyScalar(30)));
 }
 
-// ── Offline Flight Simulation Mode ───────────────────────────────────────
+// ── Offline Flight Simulation Mode & Browser Manual Flight Controller ────
 
-function runOfflineFlight(t, delta) {
-    // Smooth autonomous figure-8 trajectory for virtual twin
-    const r = 16.0;
-    const speed = 0.35;
-    const xTwin = r * Math.sin(speed * t);
-    const zTwin = r * Math.sin(speed * t * 2) * 0.5;
-    const yTwin = 6.5 + Math.sin(t * 0.6) * 1.8;
+const offlinePhysics = {
+    pos: new THREE.Vector3(0, 3.5, 0),
+    vel: new THREE.Vector3(0, 0, 0),
+    yaw: 0.0,
+    pitch: 0.0,
+    roll: 0.0,
+    hasUserControlled: false,
+    batt: 1.0,
+};
 
-    targetTwinPos.set(xTwin, yTwin, zTwin);
-    targetTwinQuat.setFromEuler(new THREE.Euler(
-        Math.sin(t * 1.4) * 0.14,
-        -speed * t + Math.PI / 2,
-        Math.cos(t * 0.9) * 0.12,
-        'YXZ'
-    ));
+function runOfflineFlight(t, delta, cmds) {
+    // Check if user has engaged manual flight controls
+    const isControlActive = Math.abs(cmds.pitch) > 0.04 || 
+                            Math.abs(cmds.roll) > 0.04 || 
+                            Math.abs(cmds.yaw_rate) > 0.04 || 
+                            cmds.armed || 
+                            Math.abs(cmds.throttle - 0.50) > 0.04;
 
-    // Real drone follows with micro latency & vibration if linked
-    const dtLag = 0.14;
-    const xReal = r * Math.sin(speed * (t - dtLag));
-    const zReal = r * Math.sin(speed * (t - dtLag) * 2) * 0.5;
-    const yReal = 6.5 + Math.sin((t - dtLag) * 0.6) * 1.8;
+    if (isControlActive) {
+        offlinePhysics.hasUserControlled = true;
+    }
 
+    let xTwin, yTwin, zTwin;
+    let rollDeg, pitchDeg, yawDeg;
+    let speedMs = 0;
+
+    if (!offlinePhysics.hasUserControlled) {
+        // Auto-demo figure-8 flight before user takes manual control
+        const r = 16.0;
+        const speed = 0.35;
+        xTwin = r * Math.sin(speed * t);
+        zTwin = r * Math.sin(speed * t * 2) * 0.5;
+        yTwin = 6.5 + Math.sin(t * 0.6) * 1.8;
+
+        pitchDeg = Math.sin(t * 1.4) * 8.0;
+        rollDeg = Math.cos(t * 0.9) * 6.0;
+        yawDeg = (-speed * t * 57.3) % 360;
+
+        targetTwinPos.set(xTwin, yTwin, zTwin);
+        targetTwinQuat.setFromEuler(new THREE.Euler(
+            Math.sin(t * 1.4) * 0.14,
+            -speed * t + Math.PI / 2,
+            Math.cos(t * 0.9) * 0.12,
+            'YXZ'
+        ));
+        speedMs = r * speed;
+        offlinePhysics.pos.copy(targetTwinPos);
+    } else {
+        // Full Manual 6-DOF Keyboard / Gamepad Flight Dynamics
+        const p = offlinePhysics;
+
+        // 1. Yaw rate integration
+        p.yaw -= cmds.yaw_rate * 2.2 * delta;
+
+        // 2. Pitch and Roll banking (auto-leveling towards commanded angles)
+        const targetPitchRad = -cmds.pitch * 0.45; // Max 26 deg tilt
+        const targetRollRad = cmds.roll * 0.45;
+        p.pitch = THREE.MathUtils.lerp(p.pitch, targetPitchRad, Math.min(1.0, 10.0 * delta));
+        p.roll = THREE.MathUtils.lerp(p.roll, targetRollRad, Math.min(1.0, 10.0 * delta));
+
+        // 3. Thrust & Accelerations in world frame
+        // Throttle: 0.5 = hover equilibrium, >0.5 climbs, <0.5 descends
+        const vertThrustAcc = (cmds.throttle - 0.48) * 20.0; // m/s^2
+
+        // Forward and Lateral accelerations from body tilt projected by heading
+        const forwardAcc = -Math.sin(p.pitch) * 24.0;
+        const rightAcc = Math.sin(p.roll) * 24.0;
+
+        const sinY = Math.sin(p.yaw);
+        const cosY = Math.cos(p.yaw);
+
+        const accX = forwardAcc * (-sinY) + rightAcc * cosY;
+        const accZ = forwardAcc * (-cosY) + rightAcc * (-sinY);
+        const accY = vertThrustAcc;
+
+        // Apply acceleration & aerodynamic drag damping
+        p.vel.x += accX * delta;
+        p.vel.y += accY * delta;
+        p.vel.z += accZ * delta;
+
+        p.vel.x *= Math.max(0.0, 1.0 - 1.6 * delta);
+        p.vel.z *= Math.max(0.0, 1.0 - 1.6 * delta);
+        p.vel.y *= Math.max(0.0, 1.0 - 1.2 * delta);
+
+        // Position integration
+        p.pos.addScaledVector(p.vel, delta);
+
+        // Ground collision handling
+        if (p.pos.y < 0.25) {
+            p.pos.y = 0.25;
+            if (p.vel.y < 0) p.vel.y = 0;
+            p.vel.x *= 0.85;
+            p.vel.z *= 0.85;
+        }
+
+        // Ceiling limit
+        if (p.pos.y > 180.0) p.pos.y = 180.0;
+
+        xTwin = p.pos.x;
+        yTwin = p.pos.y;
+        zTwin = p.pos.z;
+
+        pitchDeg = THREE.MathUtils.radToDeg(p.pitch);
+        rollDeg = THREE.MathUtils.radToDeg(p.roll);
+        yawDeg = (THREE.MathUtils.radToDeg(p.yaw) % 360 + 360) % 360;
+
+        targetTwinPos.copy(p.pos);
+        targetTwinQuat.setFromEuler(new THREE.Euler(p.pitch, p.yaw, p.roll, 'YXZ'));
+        speedMs = p.vel.length();
+    }
+
+    // Real drone follows twin with realistic sensor/transmission lag if linked
+    const xReal = THREE.MathUtils.lerp(targetRealPos.x, xTwin, 12.0 * delta);
+    const yReal = THREE.MathUtils.lerp(targetRealPos.y, yTwin, 12.0 * delta);
+    const zReal = THREE.MathUtils.lerp(targetRealPos.z, zTwin, 12.0 * delta);
     targetRealPos.set(xReal, yReal, zReal);
-    targetRealQuat.setFromEuler(new THREE.Euler(
-        Math.sin((t - dtLag) * 1.4) * 0.14,
-        -speed * (t - dtLag) + Math.PI / 2,
-        Math.cos((t - dtLag) * 0.9) * 0.12,
-        'YXZ'
-    ));
+    targetRealQuat.slerp(targetTwinQuat, 12.0 * delta);
 
     const syncError = targetRealPos.distanceTo(targetTwinPos);
-    const syncStatus = syncError < 0.22 ? 'LOCKED' : (syncError < 0.55 ? 'DRIFTING' : 'DESYNC');
+    const syncStatus = syncError < 0.25 ? 'LOCKED' : (syncError < 0.60 ? 'DRIFTING' : 'DESYNC');
+
+    // Motor commands with differential attitude mixing
+    const baseThrottle = cmds.throttle;
+    const m1 = Math.min(1.0, Math.max(0.05, baseThrottle + cmds.pitch * 0.15 - cmds.roll * 0.15 + cmds.yaw_rate * 0.10));
+    const m2 = Math.min(1.0, Math.max(0.05, baseThrottle + cmds.pitch * 0.15 + cmds.roll * 0.15 - cmds.yaw_rate * 0.10));
+    const m3 = Math.min(1.0, Math.max(0.05, baseThrottle - cmds.pitch * 0.15 + cmds.roll * 0.15 + cmds.yaw_rate * 0.10));
+    const m4 = Math.min(1.0, Math.max(0.05, baseThrottle - cmds.pitch * 0.15 - cmds.roll * 0.15 - cmds.yaw_rate * 0.10));
+
+    offlinePhysics.batt = Math.max(0.15, offlinePhysics.batt - (baseThrottle * 0.00008));
 
     latestTelemetryState = {
         t: t,
         pos: [zTwin, xTwin, -yTwin],
         real_pos: [zReal, xReal, -yReal],
-        euler: [Math.sin(t * 1.4) * 8.0, Math.cos(t * 0.9) * 6.0, (-speed * t * 57.3) % 360],
-        real_euler: [Math.sin(t * 1.4) * 8.0, Math.cos(t * 0.9) * 6.0, (-speed * t * 57.3) % 360],
-        motors: [0.55, 0.55, 0.55, 0.55],
+        euler: [rollDeg, pitchDeg, yawDeg],
+        real_euler: [rollDeg, pitchDeg, yawDeg],
+        motors: [m1, m2, m3, m4],
         alt: yTwin,
-        airspeed: r * speed,
-        batt: Math.max(0.4, 1.0 - t / 750),
+        airspeed: speedMs,
+        batt: offlinePhysics.batt,
         type: currentUAVType,
-        phase: 'FLIGHT',
+        phase: yTwin > 0.4 ? (cmds.armed ? 'MANUAL_FLIGHT' : 'AUTO_HOVER') : 'LANDED',
         wind: [2.0, 1.0, 0.0],
         twin_health: Math.max(0.0, 1.0 - (syncError / 1.5)),
         sync_error: syncError,
         sync_status: syncStatus,
-        real_source: 'Hardware HIL Stream (MAVLink Active)',
+        real_source: 'Browser 6-DOF Web Kinematics (Hardware Link Ready)',
         real_connected: isRealDroneLinked,
     };
 }

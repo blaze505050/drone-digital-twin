@@ -40,6 +40,7 @@ def add_code(code):
 
 # Title & Overview
 add_md("""# 🚁 DronePy: RocketPy-style Multirotor Flight Dynamics & Digital Twin
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/blaze505050/drone-digital-twin/blob/main/examples/DronePy_Complete_Tutorial.ipynb)
 
 **DronePy** is a high-fidelity, modular 6-DOF multirotor UAV flight simulation, stochastic dispersion analysis, and digital twin synchronization framework built directly on top of the 31-subsystem UAV Digital Twin platform.
 
@@ -58,8 +59,15 @@ add_md("""# 🚁 DronePy: RocketPy-style Multirotor Flight Dynamics & Digital Tw
 # Step 1
 add_md("""---
 ## Step 1: Environment Setup & Package Imports
-We import the top-level declarative DronePy API and numerical utilities.""")
-add_code("""import numpy as np
+We import the top-level declarative DronePy API and numerical utilities. If running in Google Colab, the cell installs DronePy automatically.""")
+add_code("""# Setup Google Colab environment if executing in cloud
+try:
+    import dronepy
+except ImportError:
+    !pip install -q git+https://github.com/blaze505050/drone-digital-twin.git
+    import dronepy
+
+import numpy as np
 try:
     import matplotlib.pyplot as plt
 except ImportError:

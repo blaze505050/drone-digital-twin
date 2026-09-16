@@ -9,6 +9,11 @@
   <img src="https://img.shields.io/badge/License-MIT-lightgrey" />
 </p>
 
+<p align="center">
+  <a href="https://blaze505050.github.io/drone-digital-twin/"><img src="https://img.shields.io/badge/🎮%20Live%203D%20Simulator-Fly%20in%20Browser-blueviolet?style=for-the-badge" alt="Live 3D Simulator" /></a>
+  <a href="https://colab.research.google.com/github/blaze505050/drone-digital-twin/blob/main/examples/DronePy_Complete_Tutorial.ipynb"><img src="https://img.shields.io/badge/⚡%20Google%20Colab-1--Click%20Tutorial-orange?style=for-the-badge" alt="Open In Colab" /></a>
+</p>
+
 A comprehensive **multi-physics, closed-loop UAV Digital Twin ecosystem** and **DronePy** — a RocketPy-style multirotor UAV engineering simulation, stochastic analysis, and sim-to-real digital twin synchronization framework:
 
 - **DronePy Engineering Layer**: Declarative notebook-first flight dynamics API (`from dronepy import Drone, Environment, Flight, MonteCarlo`), parallel Monte Carlo dispersion with CEP50/CEP95 circles, in-flight discrete event scheduling (payload drops, motor burnout), and multi-timeline digital twin synchronization.
@@ -20,14 +25,17 @@ A comprehensive **multi-physics, closed-loop UAV Digital Twin ecosystem** and **
 - **Flight Autonomy & Sim-to-Real**: Pluggable Command Sinks (Gazebo SITL and MAVLink hardware), YOLO vision perception bridge for GPS-denied relative navigation, and Gymnasium RL flight controller.
 - **Defense & Swarm**: Multi-UAV swarm formation control under electronic warfare (GPS jamming and RF degradation).
 
-> **Interactive Tutorial**: Check out the comprehensive 18-step tutorial notebook in [`examples/DronePy_Complete_Tutorial.ipynb`](examples/DronePy_Complete_Tutorial.ipynb)!
-> **Architecture & API Documentation**:
-> - [DronePy Architecture Specification](docs/DRONEPY_ARCHITECTURE.md)
-> - [DronePy API Reference](docs/DRONEPY_API.md)
-> - [Real-Time Digital Twin](docs/REALTIME_DIGITAL_TWIN.md)
-> - [Sim-to-Real Methodology](docs/SIM_TO_REAL.md)
-> - [Monte Carlo Dispersion](docs/MONTE_CARLO.md)
-> - [Validation Standards](docs/VALIDATION.md)
+### 🎓 Interactive Showcase & Learning Resources
+- 🎮 **[Live 3D WebGL Flight Simulator](https://blaze505050.github.io/drone-digital-twin/)**: Fly directly in any browser with keyboard (WASD/Shift/Space) or USB gamepad without installing Python. Features procedural Web Audio motor acoustics and 8-gate aerobatic racing.
+- 📓 **[1-Click Colab Master Tutorial](examples/DronePy_Complete_Tutorial.ipynb)**: Full 18-step engineering tutorial runnable on the cloud with zero setup.
+- 📚 **5-Part Student Aerospace Curriculum (`examples/labs/`)**:
+  - [Lab 1: Vehicle Design, BEMT & Propulsion Sizing](examples/labs/Lab1_Vehicle_Design_and_BEMT.ipynb)
+  - [Lab 2: Atmospheric Physics, ISA 1976 & Dryden Turbulence](examples/labs/Lab2_Atmospheric_Physics_and_Turbulence.ipynb)
+  - [Lab 3: Dynamic Payload Drops, CG Shifts & Parallel-Axis Inertia](examples/labs/Lab3_Dynamic_Payload_Release_and_Inertia.ipynb)
+  - [Lab 4: Stochastic Monte Carlo & Landing Dispersion Analysis](examples/labs/Lab4_Stochastic_Monte_Carlo_and_Dispersion.ipynb)
+  - [Lab 5: Digital Twin Synchronization, Residuals & Diagnostics](examples/labs/Lab5_Digital_Twin_Sync_and_Diagnostics.ipynb)
+- 📄 **[Technical Whitepaper & Architecture Specification](docs/WHITE_PAPER.md)**: Rigorous mathematical derivations, UIUC wind tunnel benchmarks, and cyber-physical twin equations.
+- 💼 **[Portfolio & Resume Interview Guide](docs/PORTFOLIO_RESUME_GUIDE.md)**: STAR resume bullets for 4 career tracks and top 10 technical interview defense answers.
 
 ---
 
